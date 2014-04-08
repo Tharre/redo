@@ -1,0 +1,25 @@
+# define all project wide variables
+
+export ROOTDIR=$(pwd)
+export SRCDIR=$ROOTDIR/src
+export OUTDIR=$ROOTDIR/out
+export VERSION="pre-0.01"
+
+# TODO: improve this
+
+if [ "$1" = "all" ]; then
+	redo-ifchange $OUTDIR/redo $OUTDIR/redo-ifchange
+elif [ "$1" = "clean" ]; then
+	rm -rf $OUTDIR/*.tmp $OUTDIR/*.o $OUTDIR/redo $OUTDIR/redo-ifchange $OUTDIR/CC
+	# autoconf stuff
+	rm -rf autom4te.cache config.h.in configure config.status config.log config.h
+elif [ "$1" = "install" ]; then
+	redo-ifchange all
+	sudo install $OUTDIR/redo /usr/bin
+	sudo install $OUTDIR/redo-ifchange /usr/bin
+elif [ "$1" = "test" ]; then
+	echo "Sadly there are no tests yet ..."
+elif [ "$1" = "zip" ]; then
+	redo-ifchange clean # we always want to zip the clean workstate
+	zip -r redo.zip *
+fi
