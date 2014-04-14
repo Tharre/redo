@@ -21,234 +21,234 @@ const char default_name[] = "default";
 const char temp_ext[] = ".redoing.tmp";
 
 int build_target(const char *target) {
-	assert(target);
+    assert(target);
 
-	int retval = 0;
-	printf("redo  %s\n", target);
+    int retval = 0;
+    printf("redo  %s\n", target);
 
-	/* get the do-file which we are going to execute */
-	char *do_file = get_do_file(target);
-	if (do_file == NULL) {
-		if (file_exists(target)) {
-			/* if our target file has no do file associated but exists,
-			   then we treat it as a source */
-			/* TODO: write dependencies */
-			goto exit;
-		}
-		fprintf(stderr, "%s couldn't be built because no "
-				"suitable do-file exists\n", target);
-		retval = 1;
-		goto exit;
-	}
+    /* get the do-file which we are going to execute */
+    char *do_file = get_do_file(target);
+    if (do_file == NULL) {
+        if (file_exists(target)) {
+            /* if our target file has no do file associated but exists,
+               then we treat it as a source */
+            /* TODO: write dependencies */
+            goto exit;
+        }
+        fprintf(stderr, "%s couldn't be built because no "
+                "suitable do-file exists\n", target);
+        retval = 1;
+        goto exit;
+    }
 
-	debug("Using do-file %s\n", do_file);
+    debug("Using do-file %s\n", do_file);
 
-	char *temp_output = concat(2, target, temp_ext);
+    char *temp_output = concat(2, target, temp_ext);
 
     pid_t pid = fork();
     if (pid == -1) {
         /* failure */
-		fatal("redo: failed to fork() new process");
+        fatal("redo: failed to fork() new process");
     } else if (pid == 0) {
         /* child */
 
-		/* change directory to our target */
-		char *dirc = ec_strdup(target);
-		char *dtarget = dirname(dirc);
-		if (chdir(dtarget) == -1)
-			fatal("redo: failed to change directory to %s", dtarget);
+        /* change directory to our target */
+        char *dirc = ec_strdup(target);
+        char *dtarget = dirname(dirc);
+        if (chdir(dtarget) == -1)
+            fatal("redo: failed to change directory to %s", dtarget);
 
-		free(dirc);
+        free(dirc);
 
-		/* target is now in the cwd so change path accordingly */
-		char *btarget = xbasename(target);
-		char *bdo_file = xbasename(do_file);
+        /* target is now in the cwd so change path accordingly */
+        char *btarget = xbasename(target);
+        char *bdo_file = xbasename(do_file);
 
-		/* read and parse shebang */
-		FILE *fp = fopen(bdo_file, "rb+");
-		if (!fp)
-			fatal("redo: failed to open %s", bdo_file);
+        /* read and parse shebang */
+        FILE *fp = fopen(bdo_file, "rb+");
+        if (!fp)
+            fatal("redo: failed to open %s", bdo_file);
 
-		const size_t bufsize = 1024;
-		char buf[bufsize];
+        const size_t bufsize = 1024;
+        char buf[bufsize];
 
-		buf[ fread(buf, 1, sizeof(buf)-1, fp) ] = '\0';
-		if (ferror(fp))
-			fatal("redo: failed to read from %s", bdo_file);
+        buf[ fread(buf, 1, sizeof(buf)-1, fp) ] = '\0';
+        if (ferror(fp))
+            fatal("redo: failed to read from %s", bdo_file);
 
-		fclose(fp);
+        fclose(fp);
 
-		char **argv;
-		size_t i = 0;
-		if (buf[0] == '#' && buf[1] == '!') {
-			argv = parsecmd(&buf[2], &i, 5);
-		} else {
-			argv = ec_malloc(7 * sizeof(char*));
-			argv[i++] = "/bin/sh";
-			argv[i++] = "-e";
-		}
+        char **argv;
+        size_t i = 0;
+        if (buf[0] == '#' && buf[1] == '!') {
+            argv = parsecmd(&buf[2], &i, 5);
+        } else {
+            argv = ec_malloc(7 * sizeof(char*));
+            argv[i++] = "/bin/sh";
+            argv[i++] = "-e";
+        }
 
-		argv[i++] = bdo_file;
-		argv[i++] = (char*) btarget;
-		char *basename = remove_ext(btarget);
-		argv[i++] = basename;
-		argv[i++] = temp_output;
-		argv[i] = NULL;
+        argv[i++] = bdo_file;
+        argv[i++] = (char*) btarget;
+        char *basename = remove_ext(btarget);
+        argv[i++] = basename;
+        argv[i++] = temp_output;
+        argv[i] = NULL;
 
-		execv(argv[0], argv);
+        execv(argv[0], argv);
 
-		/* execv should never return */
-		fatal("redo: failed to replace the child process with %s", argv[0]);
-	}
+        /* execv should never return */
+        fatal("redo: failed to replace the child process with %s", argv[0]);
+    }
 
     /* parent */
     int returncode;
     waitpid(pid, &returncode, 0);
-	bool remove_temp = true;
+    bool remove_temp = true;
 
     if (WIFEXITED(returncode)) {
         if (0 != returncode) {
-			fprintf(stderr, "redo: invoked do-file %s failed with %d\n",
-					do_file, WEXITSTATUS(returncode));
+            fprintf(stderr, "redo: invoked do-file %s failed with %d\n",
+                    do_file, WEXITSTATUS(returncode));
         } else {
-			/* successfull */
+            /* successfull */
 
             /* if the file is 0 bytes long we delete it */
-			off_t f_size = fsize(temp_output);
-			if (f_size == -1) {
-				if (errno != ENOENT)
-					fatal("redo: failed to determine the size of %s", temp_output);
+            off_t f_size = fsize(temp_output);
+            if (f_size == -1) {
+                if (errno != ENOENT)
+                    fatal("redo: failed to determine the size of %s", temp_output);
             } else if (f_size)
                 remove_temp = false;
         }
     } else {
         /* something very wrong happened with the child */
-		fprintf(stderr, "redo: invoked do-file did not terminate correctly\n");
+        fprintf(stderr, "redo: invoked do-file did not terminate correctly\n");
     }
 
     if (remove_temp) {
-	    if (remove(temp_output))
+        if (remove(temp_output))
             if (errno != ENOENT)
-		        fatal("redo: failed to remove %s", temp_output);
+                fatal("redo: failed to remove %s", temp_output);
     } else {
-	    if (rename(temp_output, target))
-		    fatal("redo: failed to rename %s to %s", temp_output, target);
+        if (rename(temp_output, target))
+            fatal("redo: failed to rename %s to %s", temp_output, target);
     }
 
-	free(temp_output);
+    free(temp_output);
  exit:
-	free(do_file);
+    free(do_file);
 
-	return retval;
+    return retval;
 }
 
 /* Returns the right do-file for target */
 char *get_do_file(const char *target) {
-	assert(target);
-	/* target + ".do" */
-	char *temp = concat(2, target, do_file_ext);
-	if (file_exists(temp))
-		return temp;
-	free(temp);
+    assert(target);
+    /* target + ".do" */
+    char *temp = concat(2, target, do_file_ext);
+    if (file_exists(temp))
+        return temp;
+    free(temp);
 
-	/* default + get_extension(target) + ".do" */
-	temp = concat(3, default_name, take_extension(target), do_file_ext);
-	if (file_exists(temp))
-		return temp;
-	free(temp);
+    /* default + get_extension(target) + ".do" */
+    temp = concat(3, default_name, take_extension(target), do_file_ext);
+    if (file_exists(temp))
+        return temp;
+    free(temp);
 
-	/* Redofile */
-	temp = strdup("Redofile");
-	if (file_exists(temp))
-		return temp;
-	free(temp);
+    /* Redofile */
+    temp = strdup("Redofile");
+    if (file_exists(temp))
+        return temp;
+    free(temp);
 
-	return NULL;
+    return NULL;
 }
 
 /* Returns the extension of the target or the empty string if none was found */
 char *take_extension(const char *target) {
-	assert(target);
-	char *temp = strrchr(target, '.');
-	if (temp)
-		return temp;
-	else {
-		return "";
-	}
+    assert(target);
+    char *temp = strrchr(target, '.');
+    if (temp)
+        return temp;
+    else {
+        return "";
+    }
 }
 
 /* Checks if target exists and prints a debug message if access() failed
    except if it failed with ENOENT. */
 bool file_exists(const char *target) {
-	assert(target);
-	if (!access(target, F_OK))
-		return true;
-	if (errno != ENOENT)
-		debug("Failed to access %s: %s\n", target, strerror(errno));
-	return false;
+    assert(target);
+    if (!access(target, F_OK))
+        return true;
+    if (errno != ENOENT)
+        debug("Failed to access %s: %s\n", target, strerror(errno));
+    return false;
 }
 
 /* Returns a new copy of str with the extension removed, where the extension is
    everything behind the last dot, including the dot. */
 char *remove_ext(const char *str) {
-	assert(str);
-	size_t len;
-	char *ret, *dot = NULL;
+    assert(str);
+    size_t len;
+    char *ret, *dot = NULL;
 
-	for (len = 0; str[len]; ++len)
-		if (str[len] == '.')
-			dot = (char*) &str[len];
+    for (len = 0; str[len]; ++len)
+        if (str[len] == '.')
+            dot = (char*) &str[len];
 
-	if (dot) /* recalculate length to only reach just before the last dot */
-		len = dot - str;
+    if (dot) /* recalculate length to only reach just before the last dot */
+        len = dot - str;
 
-	ret = ec_malloc(len+1);
-	memcpy(ret, str, len);
-	ret[len] = '\0';
+    ret = ec_malloc(len+1);
+    memcpy(ret, str, len);
+    ret[len] = '\0';
 
-	return ret;
+    return ret;
 }
 
 /* Breaks cmd at spaces and stores a pointer to each argument in the returned
    array. The index i is incremented to point to the next free pointer. The
    returned array is guaranteed to have at least keep_free entries left */
 char **parsecmd(char *cmd, size_t *i, size_t keep_free) {
-	assert(cmd);
-	size_t argv_len = 16;
-	char **argv = ec_malloc(argv_len * sizeof(char*));
-	size_t j = 0;
-	bool prev_space = true;
-	for (;; ++j) {
-		switch (cmd[j]) {
-		case ' ':
-			cmd[j] = '\0';
-			prev_space = true;
-			break;
-		case '\n':
-		case '\r':
-			cmd[j] = '\0';
-		case '\0':
-			return argv;
-		default:
-			if (!prev_space)
-				break;
-			/* check if we have enough space */
-			while (*i+keep_free >= argv_len) {
-				argv_len *= 2;
-				debug("Reallocating memory (now %zu)\n", argv_len);
-				/* TODO: replace realloc? */
-				char **new_ptr = realloc(argv, argv_len * sizeof(char*));
-				if (!new_ptr)
-					fatal("redo: couldn't realloc %zu bytes",
-						  argv_len * sizeof(char*));
-				argv = new_ptr;
-			}
+    assert(cmd);
+    size_t argv_len = 16;
+    char **argv = ec_malloc(argv_len * sizeof(char*));
+    size_t j = 0;
+    bool prev_space = true;
+    for (;; ++j) {
+        switch (cmd[j]) {
+        case ' ':
+            cmd[j] = '\0';
+            prev_space = true;
+            break;
+        case '\n':
+        case '\r':
+            cmd[j] = '\0';
+        case '\0':
+            return argv;
+        default:
+            if (!prev_space)
+                break;
+            /* check if we have enough space */
+            while (*i+keep_free >= argv_len) {
+                argv_len *= 2;
+                debug("Reallocating memory (now %zu)\n", argv_len);
+                /* TODO: replace realloc? */
+                char **new_ptr = realloc(argv, argv_len * sizeof(char*));
+                if (!new_ptr)
+                    fatal("redo: couldn't realloc %zu bytes",
+                          argv_len * sizeof(char*));
+                argv = new_ptr;
+            }
 
-			prev_space = false;
-			argv[*i] = &cmd[j];
-			++*i;
-		}
-	}
+            prev_space = false;
+            argv[*i] = &cmd[j];
+            ++*i;
+        }
+    }
 }
 
 /* Returns the size of fn */
@@ -256,7 +256,7 @@ off_t fsize(const char *fn) {
     struct stat st;
 
     if (stat(fn, &st))
-		return -1;
+        return -1;
 
-	return st.st_size;
+    return st.st_size;
 }
