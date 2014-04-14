@@ -63,6 +63,7 @@ int build_target(const char *target) {
         /* target is now in the cwd so change path accordingly */
         char *btarget = xbasename(target);
         char *bdo_file = xbasename(do_file);
+        char *btemp_output = xbasename(temp_output);
 
         /* read and parse shebang */
         FILE *fp = fopen(bdo_file, "rb+");
@@ -92,7 +93,7 @@ int build_target(const char *target) {
         argv[i++] = (char*) btarget;
         char *basename = remove_ext(btarget);
         argv[i++] = basename;
-        argv[i++] = temp_output;
+        argv[i++] = btemp_output;
         argv[i] = NULL;
 
         execv(argv[0], argv);
