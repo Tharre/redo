@@ -35,7 +35,7 @@ int build_target(const char *target) {
             /* TODO: write dependencies */
             goto exit;
         }
-        fprintf(stderr, "%s couldn't be built because no "
+        log_err("%s couldn't be built because no "
                 "suitable do-file exists\n", target);
         retval = 1;
         goto exit;
@@ -66,9 +66,7 @@ int build_target(const char *target) {
         char *btemp_output = xbasename(temp_output);
 
         /* read and parse shebang */
-        FILE *fp = fopen(bdo_file, "rb+");
-        if (!fp)
-            fatal("redo: failed to open %s", bdo_file);
+        FILE *fp = safe_fopen(bdo_file, "rb+");
 
         const size_t bufsize = 1024;
         char buf[bufsize];
@@ -84,7 +82,7 @@ int build_target(const char *target) {
         if (buf[0] == '#' && buf[1] == '!') {
             argv = parsecmd(&buf[2], &i, 5);
         } else {
-            argv = ec_malloc(7 * sizeof(char*));
+            argv = safe_malloc(7 * sizeof(char*));
             argv[i++] = "/bin/sh";
             argv[i++] = "-e";
         }
@@ -108,16 +106,16 @@ int build_target(const char *target) {
     }
 
     /* parent */
-    int returncode;
-    waitpid(pid, &returncode, 0);
+    int status;
+    waitpid(pid, &status, 0);
     bool remove_temp = true;
 
-    if (WIFEXITED(returncode)) {
-        if (0 != returncode) {
-            fprintf(stderr, "redo: invoked do-file %s failed with %d\n",
-                    do_file, WEXITSTATUS(returncode));
+    if (WIFEXITED(status)) {
+        if (WEXITSTATUS(status)) { // TODO: check that
+            log_err("redo: invoked do-file %s failed: %d\n",
+                    do_file, WEXITSTATUS(status));
         } else {
-            /* successfull */
+            /* successful */
 
             /* if the file is 0 bytes long we delete it */
             off_t f_size = fsize(temp_output);
@@ -129,7 +127,7 @@ int build_target(const char *target) {
         }
     } else {
         /* something very wrong happened with the child */
-        fprintf(stderr, "redo: invoked do-file did not terminate correctly\n");
+        log_err("redo: invoked do-file did not terminate correctly\n");
     }
 
     if (remove_temp) {
@@ -164,7 +162,7 @@ char *get_do_file(const char *target) {
     free(temp);
 
     /* Redofile */
-    temp = strdup("Redofile");
+    temp = strdup("Redofile"); /* TODO: */
     if (file_exists(temp))
         return temp;
     free(temp);
@@ -208,7 +206,7 @@ char *remove_ext(const char *str) {
     if (dot) /* recalculate length to only reach just before the last dot */
         len = dot - str;
 
-    ret = ec_malloc(len+1);
+    ret = safe_malloc(len+1);
     memcpy(ret, str, len);
     ret[len] = '\0';
 
@@ -221,7 +219,7 @@ char *remove_ext(const char *str) {
 char **parsecmd(char *cmd, size_t *i, size_t keep_free) {
     assert(cmd);
     size_t argv_len = 16;
-    char **argv = ec_malloc(argv_len * sizeof(char*));
+    char **argv = safe_malloc(argv_len * sizeof(char*));
     size_t j = 0;
     bool prev_space = true;
     for (;; ++j) {
@@ -241,13 +239,8 @@ char **parsecmd(char *cmd, size_t *i, size_t keep_free) {
             /* check if we have enough space */
             while (*i+keep_free >= argv_len) {
                 argv_len *= 2;
-                debug("Reallocating memory (now %zu)\n", argv_len);
-                /* TODO: replace realloc? */
-                char **new_ptr = realloc(argv, argv_len * sizeof(char*));
-                if (!new_ptr)
-                    fatal("redo: couldn't realloc %zu bytes",
-                          argv_len * sizeof(char*));
-                argv = new_ptr;
+                debug("Reallocating memory (now %zu elements)\n", argv_len);
+                argv = safe_realloc(argv, argv_len * sizeof(char*));
             }
 
             prev_space = false;
