@@ -96,6 +96,11 @@ int build_target(const char *target) {
         argv[i++] = btemp_output;
         argv[i] = NULL;
 
+        /* excelp() has nearly everything we want: automatic parsing of the
+           shebang line through execve() and fallback to /bin/sh if no valid
+           shebang could be found. However, it fails if the target doesn't have
+           the executeable bit set, which is something we don't want. For this
+           reason we parse the shebang line ourselves. */
         execv(argv[0], argv);
 
         /* execv should never return */
