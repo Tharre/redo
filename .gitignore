@@ -1,0 +1,12 @@
+# ignore output
+out/*.o
+out/redo
+out/redo-ifchange
+
+# ignore autoconf stuff
+config.h
+config.h.in
+config.log
+config.status
+configure
+autom4te.cache
