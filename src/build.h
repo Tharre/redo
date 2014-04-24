@@ -7,7 +7,7 @@
 
 extern char *get_do_file(const char *target);
 extern int build_target(const char *target);
-extern bool file_exists(const char *target);
+extern bool fexists(const char *target);
 extern char *take_extension(const char *target);
 extern char *remove_ext(const char *str);
 extern char **parsecmd(char *cmd, size_t *i, size_t keep_free);

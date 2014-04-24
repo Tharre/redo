@@ -29,8 +29,8 @@ int build_target(const char *target) {
 
     /* get the do-file which we are going to execute */
     char *do_file = get_do_file(target);
-    if (do_file == NULL) {
-        if (file_exists(target)) {
+    if (!do_file) {
+        if (fexists(target)) {
             /* if our target file has no do file associated but exists,
                then we treat it as a source */
             /* TODO: write dependencies */
@@ -152,19 +152,19 @@ char *get_do_file(const char *target) {
     assert(target);
     /* target + ".do" */
     char *temp = concat(2, target, do_file_ext);
-    if (file_exists(temp))
+    if (fexists(temp))
         return temp;
     free(temp);
 
     /* default + get_extension(target) + ".do" */
     temp = concat(3, default_name, take_extension(target), do_file_ext);
-    if (file_exists(temp))
+    if (fexists(temp))
         return temp;
     free(temp);
 
     /* Redofile */
     temp = safe_strdup("Redofile");
-    if (file_exists(temp))
+    if (fexists(temp))
         return temp;
     free(temp);
 
@@ -184,7 +184,7 @@ char *take_extension(const char *target) {
 
 /* Checks if target exists and prints a debug message if access() failed
    except if it failed with ENOENT. */
-bool file_exists(const char *target) {
+bool fexists(const char *target) {
     assert(target);
     if (!access(target, F_OK))
         return true;
