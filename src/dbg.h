@@ -30,4 +30,18 @@
 #define fatal_(f,l,...) \
     {FATAL_HELPER_(f, l, __VA_ARGS__, strerror(errno)); exit(EXIT_FAILURE);}
 
+#define assert_str_equal(a,b) ({ \
+    if (strcmp(a, b)) { \
+        log_err("Assertion error: '%s' == '%s'\n", a, b); \
+        abort(); \
+    } \
+})
+
+#define assert_int_equal(a,b) ({ \
+    if (a != b) { \
+        log_err("Assertion error: '%d' == '%d'\n", a, b); \
+        abort(); \
+    } \
+})
+
 #endif
