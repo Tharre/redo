@@ -8,31 +8,37 @@
 #define _FILENAME "util.c"
 #include "dbg.h"
 
-#include "../config.h"
 
-/* A safe malloc wrapper. */
-void *safe_malloc_(size_t size, const char *file, unsigned int line) {
+void *safe_malloc_(size_t size, const char *file, unsigned line) {
     void *ptr = malloc(size);
-
     if (!ptr)
-        fatal_(file, line, "redo: cannot allocate %zu bytes", size);
+        fatal_(file, line, _PROGNAME": cannot allocate %zu bytes", size);
 
     return ptr;
 }
 
-void *safe_realloc_(void *ptr, size_t size, const char *file, unsigned int line) {
+void *safe_realloc_(void *ptr, size_t size, const char *file, unsigned line) {
     void *ptr2 = realloc(ptr, size);
     if (!ptr2)
-        fatal_(file, line, "redo: cannot reallocate %zu bytes", size);
+        fatal_(file, line, _PROGNAME": cannot reallocate %zu bytes", size);
 
     return ptr2;
 }
 
+char *safe_strdup_(const char *str, const char *file, unsigned line) {
+    size_t len = strlen(str) + 1;
+    char *ptr = malloc(len);
+    if (!ptr)
+        fatal_(file, line, _PROGNAME": failed to duplicate string");
+
+    return memcpy(ptr, str, len);;
+}
+
 FILE *safe_fopen_(const char *path, const char *mode, const char *file,
-                  unsigned int line) {
+                  unsigned line) {
     FILE *temp = fopen(path, mode);
     if (!temp)
-        fatal_(file, line, "redo: failed to open %s", path);
+        fatal_(file, line, _PROGNAME": failed to open %s", path);
 
     return temp;
 }
@@ -48,7 +54,7 @@ char *concat(size_t count, ...) {
         args_len[i] = strlen(va_arg(ap, char*));
         size += args_len[i];
     }
-    size++;
+    ++size;
     char *result = safe_malloc(size);
     /* debug("Allocated %zu bytes at %p\n", size, result); */
     uintptr_t offset = 0;
@@ -61,19 +67,9 @@ char *concat(size_t count, ...) {
     return result;
 }
 
+/* Sane and portable basename implementation */
 char *xbasename(const char *path) {
     assert(path);
     char *ptr = strrchr(path, '/');
     return ptr? ptr+1 : (char*) path;
-}
-
-/* TODO: REIMPLEMENT */
-char *ec_strdup(const char* str) {
-    assert(str);
-    size_t len = strlen(str) + 1;
-    char *ptr = malloc(len);
-    if (!ptr)
-        fatal("redo: failed to duplicate string");
-
-    return memcpy(ptr, str, len);;
 }

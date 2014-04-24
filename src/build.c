@@ -54,7 +54,7 @@ int build_target(const char *target) {
         /* child */
 
         /* change directory to our target */
-        char *dirc = ec_strdup(target);
+        char *dirc = safe_strdup(target);
         char *dtarget = dirname(dirc);
         if (chdir(dtarget) == -1)
             fatal("redo: failed to change directory to %s", dtarget);
@@ -163,7 +163,7 @@ char *get_do_file(const char *target) {
     free(temp);
 
     /* Redofile */
-    temp = strdup("Redofile"); /* TODO: */
+    temp = safe_strdup("Redofile");
     if (file_exists(temp))
         return temp;
     free(temp);
