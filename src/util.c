@@ -5,7 +5,7 @@
 #include <assert.h>
 
 #include "util.h"
-#define __FILENAME__ "util.c"
+#define _FILENAME "util.c"
 #include "dbg.h"
 
 #include "../config.h"

@@ -6,9 +6,9 @@
 #include <string.h>
 #include <errno.h>
 
-// #define __BFILE__ (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
-#ifndef __FILENAME__
-#define __FILENAME__ __FILE__
+
+#ifndef _FILENAME
+#define _FILENAME __FILE__
 #endif
 
 /* helper functions which help in replacing the GNU extension ##__VA_ARGS__ */
@@ -24,7 +24,7 @@
 #define debug(...) log_err(__VA_ARGS__)
 #endif
 
-#define log_err(...) LOG_HELPER(__FILENAME__, __LINE__, __VA_ARGS__)
+#define log_err(...) LOG_HELPER(_FILENAME, __LINE__, __VA_ARGS__)
 #define fatal(...) \
     {FATAL_HELPER(__VA_ARGS__, strerror(errno)); exit(EXIT_FAILURE);}
 #define fatal_(f,l,...) \

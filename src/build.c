@@ -11,7 +11,7 @@
 
 #include "build.h"
 #include "util.h"
-#define __FILENAME__ "build.c"
+#define _FILENAME "build.c"
 #include "dbg.h"
 
 /* TODO: more useful return codes? */
