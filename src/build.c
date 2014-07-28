@@ -12,6 +12,7 @@
 
 #include "build.h"
 #include "util.h"
+#include "filepath.h"
 #define _FILENAME "build.c"
 #include "dbg.h"
 
@@ -49,7 +50,7 @@ int build_target(const char *target) {
     pid_t pid = fork();
     if (pid == -1) {
         /* failure */
-        fatal("redo: failed to fork() new process");
+        fatal(ERRM_FORK);
     } else if (pid == 0) {
         /* child */
 
@@ -57,7 +58,7 @@ int build_target(const char *target) {
         char *dirc = safe_strdup(target);
         char *dtarget = dirname(dirc);
         if (chdir(dtarget) == -1)
-            fatal("redo: failed to change directory to %s", dtarget);
+            fatal(ERRM_CHDIR, dtarget);
 
         free(dirc);
 
@@ -66,34 +67,7 @@ int build_target(const char *target) {
         char *bdo_file = xbasename(do_file);
         char *btemp_output = xbasename(temp_output);
 
-        /* read and parse shebang */
-        FILE *fp = safe_fopen(bdo_file, "rb+");
-
-        const size_t bufsize = 1024;
-        char buf[bufsize];
-
-        buf[ fread(buf, 1, sizeof(buf)-1, fp) ] = '\0';
-        if (ferror(fp))
-            fatal("redo: failed to read from %s", bdo_file);
-
-        fclose(fp);
-
-        char **argv;
-        size_t i = 0;
-        if (buf[0] == '#' && buf[1] == '!') {
-            argv = parsecmd(&buf[2], &i, 5);
-        } else {
-            argv = safe_malloc(7 * sizeof(char*));
-            argv[i++] = "/bin/sh";
-            argv[i++] = "-e";
-        }
-
-        argv[i++] = bdo_file;
-        argv[i++] = (char*) btarget;
-        char *basename = remove_ext(btarget);
-        argv[i++] = basename;
-        argv[i++] = btemp_output;
-        argv[i] = NULL;
+        char **argv = parse_shebang(btarget, bdo_file, btemp_output);
 
         /* excelp() has nearly everything we want: automatic parsing of the
            shebang line through execve() and fallback to /bin/sh if no valid
@@ -103,7 +77,7 @@ int build_target(const char *target) {
         execv(argv[0], argv);
 
         /* execv should never return */
-        fatal("redo: failed to replace the child process with %s", argv[0]);
+        fatal(ERRM_EXEC, argv[0]);
     }
 
     /* parent */
@@ -119,11 +93,7 @@ int build_target(const char *target) {
             /* successful */
 
             /* if the file is 0 bytes long we delete it */
-            off_t f_size = fsize(temp_output);
-            if (f_size == -1) {
-                if (errno != ENOENT)
-                    fatal("redo: failed to determine the size of %s", temp_output);
-            } else if (f_size)
+            if (fsize(temp_output) > 0)
                 remove_temp = false;
         }
     } else {
@@ -134,10 +104,10 @@ int build_target(const char *target) {
     if (remove_temp) {
         if (remove(temp_output))
             if (errno != ENOENT)
-                fatal("redo: failed to remove %s", temp_output);
+                fatal(ERRM_REMOVE, temp_output);
     } else {
         if (rename(temp_output, target))
-            fatal("redo: failed to rename %s to %s", temp_output, target);
+            fatal(ERRM_RENAME, temp_output, target);
     }
 
     free(temp_output);
@@ -145,6 +115,42 @@ int build_target(const char *target) {
     free(do_file);
 
     return retval;
+}
+
+/* Read and parse shebang and return an argv-like pointer array containing the
+   arguments. If no valid shebang could be found, assume "/bin/sh -e" instead */
+char **parse_shebang(char *target, char *dofile, char *temp_output) {
+    FILE *fp = fopen(dofile, "rb+");
+    if (!fp)
+        fatal(ERRM_FOPEN, dofile)
+
+    const size_t bufsize = 1024;
+    char buf[bufsize];
+
+    buf[ fread(buf, 1, sizeof(buf)-1, fp) ] = '\0';
+    if (ferror(fp))
+        fatal(ERRM_FREAD, dofile);
+
+    fclose(fp);
+
+    char **argv;
+    size_t i = 0;
+    if (buf[0] == '#' && buf[1] == '!') {
+        argv = parsecmd(&buf[2], &i, 5);
+    } else {
+        argv = safe_malloc(7 * sizeof(char*));
+        argv[i++] = "/bin/sh";
+        argv[i++] = "-e";
+    }
+
+    argv[i++] = dofile;
+    argv[i++] = (char*) target;
+    char *basename = remove_ext(target);
+    argv[i++] = basename;
+    argv[i++] = temp_output;
+    argv[i] = NULL;
+
+    return argv;
 }
 
 /* Returns the right do-file for target */
@@ -169,49 +175,6 @@ char *get_do_file(const char *target) {
     free(temp);
 
     return NULL;
-}
-
-/* Returns the extension of the target or the empty string if none was found */
-char *take_extension(const char *target) {
-    assert(target);
-    char *temp = strrchr(target, '.');
-    if (temp)
-        return temp;
-    else {
-        return "";
-    }
-}
-
-/* Checks if target exists and prints a debug message if access() failed
-   except if it failed with ENOENT. */
-bool fexists(const char *target) {
-    assert(target);
-    if (!access(target, F_OK))
-        return true;
-    if (errno != ENOENT)
-        debug("Failed to access %s: %s\n", target, strerror(errno));
-    return false;
-}
-
-/* Returns a new copy of str with the extension removed, where the extension is
-   everything behind the last dot, including the dot. */
-char *remove_ext(const char *str) {
-    assert(str);
-    size_t len;
-    char *ret, *dot = NULL;
-
-    for (len = 0; str[len]; ++len)
-        if (str[len] == '.')
-            dot = (char*) &str[len];
-
-    if (dot) /* recalculate length to only reach just before the last dot */
-        len = dot - str;
-
-    ret = safe_malloc(len+1);
-    memcpy(ret, str, len);
-    ret[len] = '\0';
-
-    return ret;
 }
 
 /* Breaks cmd at spaces and stores a pointer to each argument in the returned
@@ -249,14 +212,4 @@ char **parsecmd(char *cmd, size_t *i, size_t keep_free) {
             ++*i;
         }
     }
-}
-
-/* Returns the size of fn */
-off_t fsize(const char *fn) {
-    struct stat st;
-
-    if (stat(fn, &st))
-        return -1;
-
-    return st.st_size;
 }

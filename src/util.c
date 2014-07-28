@@ -1,7 +1,5 @@
-#include <stdlib.h>
-#include <string.h>
-#include <stdint.h>
 #include <stdarg.h>
+#include <stdint.h>
 #include <assert.h>
 
 #include "util.h"
@@ -10,38 +8,33 @@
 
 
 void *safe_malloc_(size_t size, const char *file, unsigned line) {
+    assert(size > 0);
     void *ptr = malloc(size);
     if (!ptr)
-        fatal_(file, line, _PROGNAME": cannot allocate %zu bytes", size);
+        fatal_(file, line, ERRM_MALLOC, size);
 
     return ptr;
 }
 
 void *safe_realloc_(void *ptr, size_t size, const char *file, unsigned line) {
+    assert(size > 0 && ptr);
     void *ptr2 = realloc(ptr, size);
     if (!ptr2)
-        fatal_(file, line, _PROGNAME": cannot reallocate %zu bytes", size);
+        fatal_(file, line, ERRM_REALLOC, size);
 
     return ptr2;
 }
 
 char *safe_strdup_(const char *str, const char *file, unsigned line) {
+    assert(str);
     size_t len = strlen(str) + 1;
     char *ptr = malloc(len);
     if (!ptr)
-        fatal_(file, line, _PROGNAME": failed to duplicate string");
+        fatal_(file, line, ERRM_MALLOC, len);
 
-    return memcpy(ptr, str, len);;
+    return memcpy(ptr, str, len);
 }
 
-FILE *safe_fopen_(const char *path, const char *mode, const char *file,
-                  unsigned line) {
-    FILE *temp = fopen(path, mode);
-    if (!temp)
-        fatal_(file, line, _PROGNAME": failed to open %s", path);
-
-    return temp;
-}
 
 /* For concating multiple strings into a single larger one. */
 char *concat(size_t count, ...) {
@@ -65,11 +58,4 @@ char *concat(size_t count, ...) {
     va_end(ap);
     va_end(ap2);
     return result;
-}
-
-/* Sane and portable basename implementation */
-char *xbasename(const char *path) {
-    assert(path);
-    char *ptr = strrchr(path, '/');
-    return ptr? ptr+1 : (char*) path;
 }
