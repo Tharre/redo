@@ -3,7 +3,6 @@
 
 #include <stdbool.h>
 #include <stddef.h>
-#include <sys/types.h>
 
 extern char *get_do_file(const char *target);
 extern int build_target(const char *target);

@@ -26,7 +26,6 @@ int build_target(const char *target) {
     assert(target);
 
     int retval = 0;
-    printf("redo  %s\n", target);
 
     /* get the do-file which we are going to execute */
     char *do_file = get_do_file(target);
@@ -43,7 +42,8 @@ int build_target(const char *target) {
         goto exit;
     }
 
-    debug("Using do-file %s\n", do_file);
+    printf("redo  %s\n", target);
+    /*debug("Using do-file %s\n", do_file);*/
 
     char *temp_output = concat(2, target, temp_ext);
 
@@ -124,8 +124,7 @@ char **parse_shebang(char *target, char *dofile, char *temp_output) {
     if (!fp)
         fatal(ERRM_FOPEN, dofile)
 
-    const size_t bufsize = 1024;
-    char buf[bufsize];
+    char buf[1024];
 
     buf[ fread(buf, 1, sizeof(buf)-1, fp) ] = '\0';
     if (ferror(fp))
