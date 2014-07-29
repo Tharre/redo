@@ -21,6 +21,7 @@
 #define ERRM_FORK _PROGNAME": failed to fork() new process"
 #define ERRM_REALPATH _PROGNAME": failed to get realpath() of %s"
 #define ERRM_STAT _PROGNAME": failed to aquire stat() information about %s"
+#define ERRM_MKDIR _PROGNAME": failed to mkdir() %s"
 
 #define safe_malloc(size) safe_malloc_(size, _FILENAME, __LINE__)
 #define safe_realloc(ptr, size) safe_realloc_(ptr, size, _FILENAME, __LINE__)
