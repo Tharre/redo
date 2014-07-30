@@ -3,6 +3,7 @@ out/*.o
 out/redo
 out/redo-ifchange
 out/CC
+.redo
 
 # ignore autoconf stuff
 config.h
