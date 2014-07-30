@@ -7,8 +7,10 @@
 #include <sys/wait.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <fcntl.h>
 
 #include <libgen.h> /* dirname(), basename() */
+#include <openssl/sha.h>
 
 #include "build.h"
 #include "util.h"
@@ -16,12 +18,18 @@
 #define _FILENAME "build.c"
 #include "dbg.h"
 
-/* TODO: more useful return codes? */
+/* TODO: for some reason these headers aren't included */
+char *realpath(const char *path, char *resolved_path);
+int setenv(const char *name, const char *value, int overwrite);
 
 const char do_file_ext[] = ".do";
 const char default_name[] = "default";
 const char temp_ext[] = ".redoing.tmp";
+const char deps_dir[] = "/.redo/deps/";
+const char redo_root[] = "REDO_ROOT";
+const char redo_parent_target[] = "REDO_PARENT_TARGET";
 
+/* TODO: more useful return codes? */
 int build_target(const char *target) {
     assert(target);
 
@@ -33,7 +41,7 @@ int build_target(const char *target) {
         if (fexists(target)) {
             /* if our target file has no do file associated but exists,
                then we treat it as a source */
-            /* TODO: write dependencies */
+            write_dep_hash(target);
             goto exit;
         }
         log_err("%s couldn't be built because no "
@@ -68,6 +76,10 @@ int build_target(const char *target) {
         char *btemp_output = xbasename(temp_output);
 
         char **argv = parse_shebang(btarget, bdo_file, btemp_output);
+
+        /* set REDO_PARENT_TARGET */
+        if (setenv(redo_parent_target, target, 1))
+            fatal(ERRM_SETENV, redo_parent_target, target);
 
         /* excelp() has nearly everything we want: automatic parsing of the
            shebang line through execve() and fallback to /bin/sh if no valid
@@ -108,6 +120,8 @@ int build_target(const char *target) {
     } else {
         if (rename(temp_output, target))
             fatal(ERRM_RENAME, temp_output, target);
+
+        write_dep_hash(target);
     }
 
     free(temp_output);
@@ -211,4 +225,125 @@ char **parsecmd(char *cmd, size_t *i, size_t keep_free) {
             ++*i;
         }
     }
+}
+
+/* Custom version of realpath that doesn't fail if the last part of path
+   doesn't exit and allocates memory for the result itself */
+char *xrealpath(const char *path) {
+    char *dirc = safe_strdup(path);
+    char *dname = dirname(dirc);
+    char *absdir = realpath(dname, NULL);
+    if (!absdir)
+        return NULL;
+    char *abstarget = concat(3, absdir, "/", xbasename(path));
+
+    free(dirc);
+    free(absdir);
+    return abstarget;
+}
+
+/* Return the relative path against REDO_ROOT of target */
+char *get_relpath(const char *target) {
+    assert(getenv(redo_root));
+    assert(target);
+
+    char *root = getenv(redo_root);
+    char *abstarget = xrealpath(target);
+
+    if (!abstarget)
+        fatal(ERRM_REALPATH, target);
+
+    char *relpath = safe_strdup(make_relative(root, abstarget));
+    free(abstarget);
+    return relpath;
+}
+
+/* Return the dependency file path of target */
+char *get_dep_path(const char *target) {
+    assert(target);
+    assert(getenv(redo_root));
+
+    char *root = getenv(redo_root);
+    char *reltarget = get_relpath(target);
+    char *safe_target = transform_path(reltarget);
+    char *dep_path = concat(3, root, deps_dir, safe_target);
+
+    free(reltarget);
+    free(safe_target);
+    return dep_path;
+}
+
+/* Add the dependency target, with the identifier indent */
+void add_dep(const char *target, int indent) {
+    assert(target);
+    assert(getenv(redo_parent_target));
+
+    char *parent_target = getenv(redo_parent_target);
+    char *dep_path = get_dep_path(parent_target);
+
+    FILE *fp = fopen(dep_path, "rb+");
+    if (!fp) {
+        if (errno == ENOENT) {
+            fp = fopen(dep_path, "w");
+            if (!fp)
+                fatal(ERRM_FOPEN, dep_path);
+            /* skip the first n bytes that are reserved for the hash */
+            fseek(fp, 20, SEEK_SET);
+        } else {
+            fatal(ERRM_FOPEN, dep_path);
+        }
+    } else {
+        fseek(fp, 0L, SEEK_END);
+    }
+
+    char *reltarget = get_relpath(target);
+
+    putc(indent, fp);
+    fputs(reltarget, fp);
+    putc('\0', fp);
+
+    if (ferror(fp))
+        fatal(ERRM_WRITE, dep_path);
+
+    if (fclose(fp))
+        fatal(ERRM_FCLOSE, dep_path);
+    free(dep_path);
+    free(reltarget);
+}
+
+/* Hash target, storing the result in hash */
+void hash_file(const char *target, unsigned char (*hash)[20]) {
+    FILE *in = fopen(target, "rb");
+    if (!in)
+        fatal(ERRM_FOPEN, target);
+
+    SHA_CTX context;
+    unsigned char data[8192];
+    size_t read;
+
+    SHA1_Init(&context);
+    while ((read = fread(data, 1, sizeof data, in)))
+        SHA1_Update(&context, data, read);
+    SHA1_Final(*hash, &context);
+    if (fclose(in))
+        fatal(ERRM_FCLOSE, target);
+}
+
+/* Calculate and store the hash of target in the right dependency file */
+void write_dep_hash(const char *target) {
+    unsigned char hash[SHA_DIGEST_LENGTH];
+
+    hash_file(target, &hash);
+
+    char *dep_path = get_dep_path(target);
+    int out = open(dep_path, O_WRONLY | O_CREAT, 0644);
+    if (out < 0)
+        fatal("redo: failed to open() '%s'", dep_path);
+
+    if (write(out, hash, sizeof hash) < (ssize_t) sizeof hash)
+        fatal("redo: failed to write hash to '%s'", dep_path);
+
+    if (close(out))
+        fatal("redo: failed to close file descriptor.");
+    free(dep_path);
 }
