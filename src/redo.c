@@ -1,3 +1,4 @@
+#define _XOPEN_SOURCE 600
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/stat.h>
@@ -8,8 +9,6 @@
 #include "util.h"
 #include "dbg.h"
 
-/* TODO: for some reason this header is not included */
-int setenv(const char *name, const char *value, int overwrite);
 
 int main(int argc, char *argv[]) {
     /* create .redo directory */

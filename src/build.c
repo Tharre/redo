@@ -1,3 +1,4 @@
+#define _XOPEN_SOURCE 600
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -18,9 +19,6 @@
 #define _FILENAME "build.c"
 #include "dbg.h"
 
-/* TODO: for some reason these headers aren't included */
-char *realpath(const char *path, char *resolved_path);
-int setenv(const char *name, const char *value, int overwrite);
 
 const char do_file_ext[] = ".do";
 const char default_name[] = "default";
