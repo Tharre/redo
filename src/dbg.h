@@ -44,4 +44,7 @@
     } \
 })
 
+/* A neat macro that silences unused parameter warnings compiler independant */
+#define UNUSED(x) (void)(x)
+
 #endif
