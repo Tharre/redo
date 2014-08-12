@@ -5,4 +5,4 @@ else
 fi
 CC=${CC-$PREF}
 CFLAGS="-g -Wall -Wextra -std=c99 -pedantic"
-LDFLAGS=-lcrypto
+LDFLAGS="-lcrypto -lm"

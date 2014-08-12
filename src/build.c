@@ -285,8 +285,8 @@ void add_dep(const char *target, int indent) {
             fp = fopen(dep_path, "w");
             if (!fp)
                 fatal(ERRM_FOPEN, dep_path);
-            /* skip the first n bytes that are reserved for the hash */
-            fseek(fp, 20, SEEK_SET);
+            /* skip the first n bytes that are reserved for the hash + magic number */
+            fseek(fp, 20 + sizeof(unsigned int), SEEK_SET);
         } else {
             fatal(ERRM_FOPEN, dep_path);
         }
@@ -329,7 +329,9 @@ void hash_file(const char *target, unsigned char (*hash)[20]) {
 
 /* Calculate and store the hash of target in the right dependency file */
 void write_dep_hash(const char *target) {
+    assert(getenv("REDO_MAGIC"));
     unsigned char hash[SHA_DIGEST_LENGTH];
+    int magic = atoi(getenv("REDO_MAGIC"));
 
     hash_file(target, &hash);
 
@@ -340,6 +342,9 @@ void write_dep_hash(const char *target) {
 
     if (write(out, hash, sizeof hash) < (ssize_t) sizeof hash)
         fatal("redo: failed to write hash to '%s'", dep_path);
+
+    if (write(out, &magic, sizeof(unsigned int)) < (ssize_t) sizeof(unsigned int))
+        fatal("redo: failed to write magic number to '%s'", dep_path);
 
     if (close(out))
         fatal("redo: failed to close file descriptor.");
