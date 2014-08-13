@@ -21,7 +21,7 @@ int main(int argc, char *argv[]) {
     /* create .redo directory */
     if (mkdir(".redo/deps", 0744))
         if (errno != EEXIST) /* TODO: unsafe, dir could be a file or broken symlink */
-            fatal(ERRM_MKDIR, ".redo");
+            fatal(ERRM_MKDIR, ".redo/deps");
 
     /* set REDO_ROOT */
     char *cwd = getcwd(NULL, 0);

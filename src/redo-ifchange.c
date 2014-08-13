@@ -5,8 +5,7 @@
 #include "dbg.h"
 
 int main(int argc, char *argv[]) {
-    int i;
-    for (i = 1; i < argc; ++i) {
+    for (int i = 1; i < argc; ++i) {
         /*debug("Testing if %s is up-to-date ...\n", argv[i]);*/
         if (has_changed(argv[i], 'c', false)) {
             /*printf("=> no\n");*/

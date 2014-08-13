@@ -19,6 +19,7 @@
 #define _FILENAME "build.c"
 #include "dbg.h"
 
+#define HASHSIZE 20
 
 const char do_file_ext[] = ".do";
 const char default_name[] = "default";
@@ -28,9 +29,15 @@ const char redo_root[] = "REDO_ROOT";
 const char redo_parent_target[] = "REDO_PARENT_TARGET";
 const char redo_magic[] = "REDO_MAGIC";
 
-#define HASHSIZE 20
+static char *get_do_file(const char *target);
+static char **parse_shebang(char *target, char *dofile, char *temp_output);
+static char **parsecmd(char *cmd, size_t *i, size_t keep_free);
+static char *get_relpath(const char *target);
+static char *get_dep_path(const char *target);
+static void write_dep_hash(const char *target);
+static bool dependencies_changed(char buf[], size_t read);
 
-/* TODO: more useful return codes? */
+
 int build_target(const char *target) {
     assert(target);
 
@@ -142,7 +149,7 @@ int build_target(const char *target) {
 
 /* Read and parse shebang and return an argv-like pointer array containing the
    arguments. If no valid shebang could be found, assume "/bin/sh -e" instead */
-char **parse_shebang(char *target, char *dofile, char *temp_output) {
+static char **parse_shebang(char *target, char *dofile, char *temp_output) {
     FILE *fp = fopen(dofile, "rb+");
     if (!fp)
         fatal(ERRM_FOPEN, dofile)
@@ -176,7 +183,7 @@ char **parse_shebang(char *target, char *dofile, char *temp_output) {
 }
 
 /* Returns the right do-file for target */
-char *get_do_file(const char *target) {
+static char *get_do_file(const char *target) {
     assert(target);
     /* target + ".do" */
     char *temp = concat(2, target, do_file_ext);
@@ -202,7 +209,7 @@ char *get_do_file(const char *target) {
 /* Breaks cmd at spaces and stores a pointer to each argument in the returned
    array. The index i is incremented to point to the next free pointer. The
    returned array is guaranteed to have at least keep_free entries left */
-char **parsecmd(char *cmd, size_t *i, size_t keep_free) {
+static char **parsecmd(char *cmd, size_t *i, size_t keep_free) {
     assert(cmd);
     size_t argv_len = 16;
     char **argv = safe_malloc(argv_len * sizeof(char*));
@@ -238,7 +245,7 @@ char **parsecmd(char *cmd, size_t *i, size_t keep_free) {
 
 /* Custom version of realpath that doesn't fail if the last part of path
    doesn't exit and allocates memory for the result itself */
-char *xrealpath(const char *path) {
+static char *xrealpath(const char *path) {
     char *dirc = safe_strdup(path);
     char *dname = dirname(dirc);
     char *absdir = realpath(dname, NULL);
@@ -252,7 +259,7 @@ char *xrealpath(const char *path) {
 }
 
 /* Return the relative path against REDO_ROOT of target */
-char *get_relpath(const char *target) {
+static char *get_relpath(const char *target) {
     assert(getenv(redo_root));
     assert(target);
 
@@ -268,7 +275,7 @@ char *get_relpath(const char *target) {
 }
 
 /* Return the dependency file path of target */
-char *get_dep_path(const char *target) {
+static char *get_dep_path(const char *target) {
     assert(target);
     assert(getenv(redo_root));
 
@@ -321,7 +328,7 @@ void add_dep(const char *target, int indent) {
 }
 
 /* Hash target, storing the result in hash */
-void hash_file(const char *target, unsigned char (*hash)[HASHSIZE]) {
+static void hash_file(const char *target, unsigned char (*hash)[HASHSIZE]) {
     FILE *in = fopen(target, "rb");
     if (!in)
         fatal(ERRM_FOPEN, target);
@@ -339,7 +346,7 @@ void hash_file(const char *target, unsigned char (*hash)[HASHSIZE]) {
 }
 
 /* Calculate and store the hash of target in the right dependency file */
-void write_dep_hash(const char *target) {
+static void write_dep_hash(const char *target) {
     unsigned char hash[SHA_DIGEST_LENGTH];
     unsigned magic = atoi(getenv(redo_magic));
 
@@ -361,7 +368,7 @@ void write_dep_hash(const char *target) {
     free(dep_path);
 }
 
-bool dependencies_changed(char buf[], size_t read) {
+static bool dependencies_changed(char buf[], size_t read) {
     char *ptr = buf;
     for (size_t i = 0; i < read; ++i) {
         if (!buf[i]) {
@@ -410,9 +417,7 @@ bool has_changed(const char *target, int ident, bool is_sub_dependency) {
 
         free(dep_path);
 
-        unsigned magic = *(unsigned *) buf;
-
-        if (magic == (unsigned) atoi(getenv(redo_magic)))
+        if (*(unsigned *) buf == (unsigned) atoi(getenv(redo_magic)))
             return is_sub_dependency;
 
         unsigned char hash[HASHSIZE];
