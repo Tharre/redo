@@ -12,6 +12,7 @@
 #include "util.h"
 #include "dbg.h"
 
+
 static inline int digits(unsigned n) {
   return (int) log10(n) + 1;
 }
@@ -38,7 +39,7 @@ int main(int argc, char *argv[]) {
     char magic_str[digits(UINT_MAX) + 1];
     sprintf(magic_str, "%u", magic);
 
-    printf("MAGIC: %s\n", magic_str);
+    debug("magic number: %s\n", magic_str);
 
     if (setenv("REDO_MAGIC", magic_str, 0))
         fatal("setenv()");

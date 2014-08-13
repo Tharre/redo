@@ -26,6 +26,9 @@ const char temp_ext[] = ".redoing.tmp";
 const char deps_dir[] = "/.redo/deps/";
 const char redo_root[] = "REDO_ROOT";
 const char redo_parent_target[] = "REDO_PARENT_TARGET";
+const char redo_magic[] = "REDO_MAGIC";
+
+#define HASHSIZE 20
 
 /* TODO: more useful return codes? */
 int build_target(const char *target) {
@@ -48,8 +51,16 @@ int build_target(const char *target) {
         goto exit;
     }
 
-    printf("redo  %s\n", target);
-    /*debug("Using do-file %s\n", do_file);*/
+    char *reltarget = get_relpath(target);
+    printf("redo  %s\n", reltarget);
+    free(reltarget);
+
+    /* remove old dependency file */
+    char *dep_file = get_dep_path(target);
+    if (remove(dep_file))
+        if (errno != ENOENT)
+            fatal(ERRM_REMOVE, dep_file);
+    free(dep_file);
 
     char *temp_output = concat(2, target, temp_ext);
 
@@ -286,7 +297,7 @@ void add_dep(const char *target, int indent) {
             if (!fp)
                 fatal(ERRM_FOPEN, dep_path);
             /* skip the first n bytes that are reserved for the hash + magic number */
-            fseek(fp, 20 + sizeof(unsigned int), SEEK_SET);
+            fseek(fp, HASHSIZE + sizeof(unsigned int), SEEK_SET);
         } else {
             fatal(ERRM_FOPEN, dep_path);
         }
@@ -310,7 +321,7 @@ void add_dep(const char *target, int indent) {
 }
 
 /* Hash target, storing the result in hash */
-void hash_file(const char *target, unsigned char (*hash)[20]) {
+void hash_file(const char *target, unsigned char (*hash)[HASHSIZE]) {
     FILE *in = fopen(target, "rb");
     if (!in)
         fatal(ERRM_FOPEN, target);
@@ -329,9 +340,8 @@ void hash_file(const char *target, unsigned char (*hash)[20]) {
 
 /* Calculate and store the hash of target in the right dependency file */
 void write_dep_hash(const char *target) {
-    assert(getenv("REDO_MAGIC"));
     unsigned char hash[SHA_DIGEST_LENGTH];
-    int magic = atoi(getenv("REDO_MAGIC"));
+    unsigned magic = atoi(getenv(redo_magic));
 
     hash_file(target, &hash);
 
@@ -340,13 +350,95 @@ void write_dep_hash(const char *target) {
     if (out < 0)
         fatal("redo: failed to open() '%s'", dep_path);
 
+    if (write(out, &magic, sizeof(unsigned)) < (ssize_t) sizeof(unsigned))
+        fatal("redo: failed to write magic number to '%s'", dep_path);
+
     if (write(out, hash, sizeof hash) < (ssize_t) sizeof hash)
         fatal("redo: failed to write hash to '%s'", dep_path);
-
-    if (write(out, &magic, sizeof(unsigned int)) < (ssize_t) sizeof(unsigned int))
-        fatal("redo: failed to write magic number to '%s'", dep_path);
 
     if (close(out))
         fatal("redo: failed to close file descriptor.");
     free(dep_path);
+}
+
+bool dependencies_changed(char buf[], size_t read) {
+    char *ptr = buf;
+    for (size_t i = 0; i < read; ++i) {
+        if (!buf[i]) {
+            if (is_absolute(&ptr[1])) {
+                if (has_changed(&ptr[1], ptr[0], true))
+                    return true;
+            } else {
+                char *root = getenv(redo_root);
+                char *abs = concat(3, root, "/", &ptr[1]);
+                if (has_changed(abs, ptr[0], true)) {
+                    free(abs);
+                    return true;
+                }
+                free(abs);
+            }
+            ptr = &buf[i+1];
+        }
+    }
+    return false;
+}
+
+bool has_changed(const char *target, int ident, bool is_sub_dependency) {
+    switch(ident) {
+    case 'a': return true;
+    case 'e': return fexists(target);
+    case 'c':
+#define HEADERSIZE HASHSIZE + sizeof(unsigned)
+        if (!fexists(target))
+            return true;
+
+        char *dep_path = get_dep_path(target);
+
+        FILE *fp = fopen(dep_path, "rb");
+        if (!fp) {
+            if (errno == ENOENT) {
+                /* dependency file does not exist */
+                return true;
+            } else {
+                fatal(ERRM_FOPEN, dep_path);
+            }
+        }
+
+        char buf[8096];
+        if (fread(buf, 1, HEADERSIZE, fp) < HEADERSIZE)
+            fatal("redo: failed to read %zu bytes from %s", HEADERSIZE, dep_path);
+
+        free(dep_path);
+
+        unsigned magic = *(unsigned *) buf;
+
+        if (magic == (unsigned) atoi(getenv(redo_magic)))
+            return is_sub_dependency;
+
+        unsigned char hash[HASHSIZE];
+        hash_file(target, &hash);
+        if (memcmp(hash, buf+sizeof(unsigned), HASHSIZE)) {
+            /*debug("Hash doesn't match for %s\n", target);*/
+            return true;
+        }
+
+        while (!feof(fp)) {
+            size_t read = fread(buf, 1, sizeof buf, fp);
+
+            if (ferror(fp))
+                fatal("redo: failed to read %zu bytes from file descriptor", sizeof buf);
+
+            if (dependencies_changed(buf, read)) {
+                fclose(fp);
+                return true;
+            }
+        }
+
+        fclose(fp);
+        return false;
+
+    default:
+        log_err("Unknown identifier '%c'\n", ident);
+        exit(EXIT_FAILURE);
+    }
 }
