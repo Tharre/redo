@@ -38,6 +38,7 @@ static void write_dep_hash(const char *target);
 static bool dependencies_changed(char buf[], size_t read);
 
 
+/* Build given target, using it's do-file. */
 int build_target(const char *target) {
     assert(target);
 
@@ -148,7 +149,7 @@ int build_target(const char *target) {
 }
 
 /* Read and parse shebang and return an argv-like pointer array containing the
-   arguments. If no valid shebang could be found, assume "/bin/sh -e" instead */
+   arguments. If no valid shebang could be found, assume "/bin/sh -e" instead. */
 static char **parse_shebang(char *target, char *dofile, char *temp_output) {
     FILE *fp = fopen(dofile, "rb+");
     if (!fp)
@@ -182,7 +183,7 @@ static char **parse_shebang(char *target, char *dofile, char *temp_output) {
     return argv;
 }
 
-/* Returns the right do-file for target */
+/* Returns the right do-file for target. */
 static char *get_do_file(const char *target) {
     assert(target);
     /* target + ".do" */
@@ -208,7 +209,7 @@ static char *get_do_file(const char *target) {
 
 /* Breaks cmd at spaces and stores a pointer to each argument in the returned
    array. The index i is incremented to point to the next free pointer. The
-   returned array is guaranteed to have at least keep_free entries left */
+   returned array is guaranteed to have at least keep_free entries left. */
 static char **parsecmd(char *cmd, size_t *i, size_t keep_free) {
     assert(cmd);
     size_t argv_len = 16;
@@ -244,7 +245,7 @@ static char **parsecmd(char *cmd, size_t *i, size_t keep_free) {
 }
 
 /* Custom version of realpath that doesn't fail if the last part of path
-   doesn't exit and allocates memory for the result itself */
+   doesn't exist and allocates memory for the result itself. */
 static char *xrealpath(const char *path) {
     char *dirc = safe_strdup(path);
     char *dname = dirname(dirc);
@@ -258,7 +259,7 @@ static char *xrealpath(const char *path) {
     return abstarget;
 }
 
-/* Return the relative path against REDO_ROOT of target */
+/* Return the relative path against REDO_ROOT of target. */
 static char *get_relpath(const char *target) {
     assert(getenv(redo_root));
     assert(target);
@@ -274,7 +275,7 @@ static char *get_relpath(const char *target) {
     return relpath;
 }
 
-/* Return the dependency file path of target */
+/* Return the dependency file path of target. */
 static char *get_dep_path(const char *target) {
     assert(target);
     assert(getenv(redo_root));
@@ -289,7 +290,7 @@ static char *get_dep_path(const char *target) {
     return dep_path;
 }
 
-/* Add the dependency target, with the identifier indent */
+/* Add the dependency target, with the identifier indent. */
 void add_dep(const char *target, int indent) {
     assert(target);
     assert(getenv(redo_parent_target));
@@ -327,7 +328,7 @@ void add_dep(const char *target, int indent) {
     free(reltarget);
 }
 
-/* Hash target, storing the result in hash */
+/* Hash target, storing the result in hash. */
 static void hash_file(const char *target, unsigned char (*hash)[HASHSIZE]) {
     FILE *in = fopen(target, "rb");
     if (!in)
@@ -345,7 +346,7 @@ static void hash_file(const char *target, unsigned char (*hash)[HASHSIZE]) {
         fatal(ERRM_FCLOSE, target);
 }
 
-/* Calculate and store the hash of target in the right dependency file */
+/* Calculate and store the hash of target in the right dependency file. */
 static void write_dep_hash(const char *target) {
     unsigned char hash[SHA_DIGEST_LENGTH];
     unsigned magic = atoi(getenv(redo_magic));
@@ -368,6 +369,8 @@ static void write_dep_hash(const char *target) {
     free(dep_path);
 }
 
+/* Parse the dependency information from the dependency record and check if
+   those are up-to-date. */
 static bool dependencies_changed(char buf[], size_t read) {
     char *ptr = buf;
     for (size_t i = 0; i < read; ++i) {
@@ -390,6 +393,7 @@ static bool dependencies_changed(char buf[], size_t read) {
     return false;
 }
 
+/* Checks if a target should be rebuild, given it's identifier. */
 bool has_changed(const char *target, int ident, bool is_sub_dependency) {
     switch(ident) {
     case 'a': return true;

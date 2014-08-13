@@ -13,6 +13,7 @@
 #include "dbg.h"
 
 
+/* Returns the amount of digits a number n has in decimal. */
 static inline int digits(unsigned n) {
   return (int) log10(n) + 1;
 }
