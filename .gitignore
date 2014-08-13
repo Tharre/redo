@@ -2,6 +2,7 @@
 out/*.o
 out/redo
 out/redo-ifchange
+out/redo-always
 out/CC
 .redo
 
