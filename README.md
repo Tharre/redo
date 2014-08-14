@@ -7,4 +7,4 @@ If you want more detailed information about `redo`, a working python implementat
 The goal of this project is not only to implement `redo` in C, but also to rethink and improve it. This also means that this project will not try be compatible with other implementations of `redo`, although this shouldn't prove problematic.
 
 # Project status [![Build Status](https://travis-ci.org/Tharre/redo.svg?branch=master)](https://travis-ci.org/Tharre/redo)
-This is work in progress, many features are still missing and the behaviour is not set in stone yet. Missing features include dependency checking, parallel builds, recursive checking and probably a lot more.
+This is work in progress, many features are still missing and the behaviour is not set in stone yet. Missing features include parallel builds, recursive checking for do-files, automatic cleanup of build files and probably a lot more.
