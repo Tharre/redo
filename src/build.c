@@ -40,10 +40,6 @@ static bool dependencies_changed(char buf[], size_t read);
 
 /* Build given target, using it's do-file. */
 int build_target(const char *target) {
-    assert(target);
-
-    int retval = 0;
-
     /* get the do-file which we are going to execute */
     char *do_file = get_do_file(target);
     if (!do_file) {
@@ -51,12 +47,13 @@ int build_target(const char *target) {
             /* if our target file has no do file associated but exists,
                then we treat it as a source */
             write_dep_hash(target);
-            goto exit;
+            free(do_file);
+            return 0;
         }
         log_err("%s couldn't be built because no "
                 "suitable do-file exists\n", target);
-        retval = 1;
-        goto exit;
+        free(do_file);
+        return 1;
     }
 
     char *reltarget = get_relpath(target);
@@ -111,13 +108,15 @@ int build_target(const char *target) {
 
     /* parent */
     int status;
-    waitpid(pid, &status, 0);
+    if (waitpid(pid, &status, 0) == -1)
+        fatal("waitpid() failed: ");
     bool remove_temp = true;
 
     if (WIFEXITED(status)) {
-        if (WEXITSTATUS(status)) { // TODO: check that
+        if (WEXITSTATUS(status)) {
             log_err("redo: invoked do-file %s failed: %d\n",
                     do_file, WEXITSTATUS(status));
+            exit(EXIT_FAILURE);
         } else {
             /* successful */
 
@@ -128,6 +127,7 @@ int build_target(const char *target) {
     } else {
         /* something very wrong happened with the child */
         log_err("redo: invoked do-file did not terminate correctly\n");
+        exit(EXIT_FAILURE);
     }
 
     if (remove_temp) {
@@ -142,16 +142,15 @@ int build_target(const char *target) {
     }
 
     free(temp_output);
- exit:
     free(do_file);
 
-    return retval;
+    return 0;
 }
 
 /* Read and parse shebang and return an argv-like pointer array containing the
    arguments. If no valid shebang could be found, assume "/bin/sh -e" instead. */
 static char **parse_shebang(char *target, char *dofile, char *temp_output) {
-    FILE *fp = fopen(dofile, "rb+");
+    FILE *fp = fopen(dofile, "rb");
     if (!fp)
         fatal(ERRM_FOPEN, dofile)
 
@@ -185,7 +184,6 @@ static char **parse_shebang(char *target, char *dofile, char *temp_output) {
 
 /* Returns the right do-file for target. */
 static char *get_do_file(const char *target) {
-    assert(target);
     /* target + ".do" */
     char *temp = concat(2, target, do_file_ext);
     if (fexists(temp))
@@ -211,7 +209,6 @@ static char *get_do_file(const char *target) {
    array. The index i is incremented to point to the next free pointer. The
    returned array is guaranteed to have at least keep_free entries left. */
 static char **parsecmd(char *cmd, size_t *i, size_t keep_free) {
-    assert(cmd);
     size_t argv_len = 16;
     char **argv = safe_malloc(argv_len * sizeof(char*));
     size_t j = 0;
@@ -262,7 +259,6 @@ static char *xrealpath(const char *path) {
 /* Return the relative path against REDO_ROOT of target. */
 static char *get_relpath(const char *target) {
     assert(getenv(redo_root));
-    assert(target);
 
     char *root = getenv(redo_root);
     char *abstarget = xrealpath(target);
@@ -277,7 +273,6 @@ static char *get_relpath(const char *target) {
 
 /* Return the dependency file path of target. */
 static char *get_dep_path(const char *target) {
-    assert(target);
     assert(getenv(redo_root));
 
     char *root = getenv(redo_root);
@@ -292,7 +287,6 @@ static char *get_dep_path(const char *target) {
 
 /* Add the dependency target, with the identifier indent. */
 void add_dep(const char *target, int indent) {
-    assert(target);
     assert(getenv(redo_parent_target));
 
     char *parent_target = getenv(redo_parent_target);
@@ -341,13 +335,17 @@ static void hash_file(const char *target, unsigned char (*hash)[HASHSIZE]) {
     SHA1_Init(&context);
     while ((read = fread(data, 1, sizeof data, in)))
         SHA1_Update(&context, data, read);
+
+    if (ferror(in))
+        fatal(ERRM_FREAD, target);
     SHA1_Final(*hash, &context);
-    if (fclose(in))
-        fatal(ERRM_FCLOSE, target);
+    fclose(in);
 }
 
 /* Calculate and store the hash of target in the right dependency file. */
 static void write_dep_hash(const char *target) {
+    assert(getenv(redo_magic));
+
     unsigned char hash[SHA_DIGEST_LENGTH];
     unsigned magic = atoi(getenv(redo_magic));
 
@@ -356,7 +354,7 @@ static void write_dep_hash(const char *target) {
     char *dep_path = get_dep_path(target);
     int out = open(dep_path, O_WRONLY | O_CREAT, 0644);
     if (out < 0)
-        fatal("redo: failed to open() '%s'", dep_path);
+        fatal(ERRM_FOPEN, dep_path);
 
     if (write(out, &magic, sizeof(unsigned)) < (ssize_t) sizeof(unsigned))
         fatal("redo: failed to write magic number to '%s'", dep_path);
@@ -365,21 +363,22 @@ static void write_dep_hash(const char *target) {
         fatal("redo: failed to write hash to '%s'", dep_path);
 
     if (close(out))
-        fatal("redo: failed to close file descriptor.");
+        fatal(ERRM_FCLOSE, dep_path);
     free(dep_path);
 }
 
 /* Parse the dependency information from the dependency record and check if
    those are up-to-date. */
 static bool dependencies_changed(char buf[], size_t read) {
+    char *root = getenv(redo_root);
     char *ptr = buf;
+
     for (size_t i = 0; i < read; ++i) {
         if (!buf[i]) {
             if (is_absolute(&ptr[1])) {
                 if (has_changed(&ptr[1], ptr[0], true))
                     return true;
             } else {
-                char *root = getenv(redo_root);
                 char *abs = concat(3, root, "/", &ptr[1]);
                 if (has_changed(abs, ptr[0], true)) {
                     free(abs);
