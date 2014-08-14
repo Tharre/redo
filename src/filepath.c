@@ -9,7 +9,7 @@
 #include "dbg.h"
 
 
-/* Check if the given path is absolute */
+/* Check if the given path is absolute. */
 bool is_absolute(const char* path) {
     return path[0] == '/';
 }
@@ -35,7 +35,7 @@ char *remove_ext(const char *str) {
     return ret;
 }
 
-/* Returns the extension of the target or the empty string if none was found */
+/* Returns the extension of the target or the empty string if none was found. */
 char *take_extension(const char *target) {
     assert(target);
     char *temp = strrchr(target, '.');
@@ -46,7 +46,7 @@ char *take_extension(const char *target) {
 }
 
 /* Make one path relative to another i.e. some/path to some/path/a/b/c would
-   yield a/b/c as result. Prints '.' if the 2 paths match */
+   yield a/b/c as result. Prints '.' if the 2 paths match. */
 // TODO: nameing, requires absolute paths, doesn't MALLOC
 const char *make_relative(const char *target, const char *to) {
     int i;
@@ -68,7 +68,7 @@ const char *make_relative(const char *target, const char *to) {
     return &to[i];
 }
 
-/* Transforms target into a safe filename, replacing all '/' with '!' */
+/* Transforms target into a safe filename, replacing all '/' with '!'. */
 char *transform_path(const char *target) {
     char *ptr = (char*) target;
     size_t escape = 0, i = 0;
@@ -90,7 +90,7 @@ char *transform_path(const char *target) {
     return ptr;
 }
 
-/* Sane and portable basename implementation */
+/* Sane and portable basename implementation. */
 char *xbasename(const char *path) {
     assert(path);
     char *ptr = strrchr(path, '/');
@@ -118,4 +118,22 @@ off_t fsize(const char *fn) {
     }
 
     return st.st_size;
+}
+
+/* Create the directory dir, while removing other 'files' with the same name. */
+void mkdirp(const char *dir) {
+    struct stat st;
+    if (stat(dir, &st)) {
+        if (errno != ENOENT)
+            fatal(ERRM_STAT, dir);
+        if (mkdir(dir, 0755))
+            fatal(ERRM_MKDIR, dir);
+    } else {
+        if (!S_ISDIR(st.st_mode)) {
+            if (remove(dir))
+                fatal(ERRM_REMOVE, dir);
+            if (mkdir(dir, 0755))
+                fatal(ERRM_MKDIR, dir);
+        }
+    }
 }

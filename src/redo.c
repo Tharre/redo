@@ -11,6 +11,7 @@
 #include "build.h"
 #include "util.h"
 #include "dbg.h"
+#include "filepath.h"
 
 
 /* Returns the amount of digits a number n has in decimal. */
@@ -19,26 +20,22 @@ static inline int digits(unsigned n) {
 }
 
 int main(int argc, char *argv[]) {
-    /* create .redo directory */
-    if (mkdir(".redo/deps", 0744))
-        if (errno != EEXIST) /* TODO: unsafe, dir could be a file or broken symlink */
-            fatal(ERRM_MKDIR, ".redo/deps");
+    /* create the dependency store if it doesn't already exist */
+    mkdirp(".redo");
+    mkdirp(".redo/deps");
 
     /* set REDO_ROOT */
     char *cwd = getcwd(NULL, 0);
     if (!cwd)
         fatal("redo: failed to obtain cwd");
-
     if (setenv("REDO_ROOT", cwd, 0))
         fatal("redo: failed to setenv %s to %s", "REDO_ROOT", cwd);
-
     free(cwd);
 
-    srand(time(NULL)); /* TODO: error checking */
-    unsigned magic = rand();
-
+    /* set REDO_MAGIC */
+    srand(time(NULL));
     char magic_str[digits(UINT_MAX) + 1];
-    sprintf(magic_str, "%u", magic);
+    sprintf(magic_str, "%u", rand());
 
     debug("magic number: %s\n", magic_str);
 

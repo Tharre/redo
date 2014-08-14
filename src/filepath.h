@@ -11,5 +11,6 @@ extern char *transform_path(const char *target);
 extern char *xbasename(const char *path);
 extern bool fexists(const char *target);
 extern off_t fsize(const char *fn);
+extern void mkdirp(const char *dir);
 
 #endif
