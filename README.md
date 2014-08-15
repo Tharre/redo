@@ -15,3 +15,7 @@ with other implementations of `redo`.
 This is work in progress, many features are still missing and the behaviour is
 not set in stone yet. Missing features include parallel builds, recursive
 checking for do-files, automatic cleanup of built files and probably a lot more.
+
+# License
+This piece of software is distributed under the MIT license, see LICENSE for
+more details.
