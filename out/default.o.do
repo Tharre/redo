@@ -1,2 +1,2 @@
 redo-ifchange CC
-. ./CC "$@"
+./CC "$@"
