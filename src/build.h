@@ -11,7 +11,7 @@
 
 #include <stdbool.h>
 
-extern void add_dep(const char *target, int indent);
+extern void add_dep(const char *target, const char *parent, int ident);
 extern bool has_changed(const char *target, int ident, bool is_sub_dependency);
 extern int build_target(const char *target);
 

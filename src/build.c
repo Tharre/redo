@@ -29,15 +29,14 @@
 
 #define HASHSIZE 20
 
-const char do_file_ext[] = ".do";
-const char default_name[] = "default";
 const char temp_ext[] = ".redoing.tmp";
 const char deps_dir[] = "/.redo/deps/";
 const char redo_root[] = "REDO_ROOT";
 const char redo_parent_target[] = "REDO_PARENT_TARGET";
 const char redo_magic[] = "REDO_MAGIC";
 
-static char *get_do_file(const char *target);
+static struct do_attr *get_dofiles(const char *target);
+static void free_do_attr(struct do_attr *thing);
 static char **parse_shebang(char *target, char *dofile, char *temp_output);
 static char **parsecmd(char *cmd, size_t *i, size_t keep_free);
 static char *get_relpath(const char *target);
@@ -45,22 +44,29 @@ static char *get_dep_path(const char *target);
 static void write_dep_hash(const char *target);
 static bool dependencies_changed(char buf[], size_t read);
 
+struct do_attr {
+    char *specific;
+    char *general;
+    char *redofile;
+    char *chosen;
+};
+
 
 /* Build given target, using it's do-file. */
 int build_target(const char *target) {
     /* get the do-file which we are going to execute */
-    char *do_file = get_do_file(target);
-    if (!do_file) {
+    struct do_attr *dofiles = get_dofiles(target);
+    if (!dofiles->chosen) {
         if (fexists(target)) {
             /* if our target file has no do file associated but exists,
                then we treat it as a source */
             write_dep_hash(target);
-            free(do_file);
+            free_do_attr(dofiles);
             return 0;
         }
         log_err("%s couldn't be built because no "
                 "suitable do-file exists\n", target);
-        free(do_file);
+        free_do_attr(dofiles);
         return 1;
     }
 
@@ -94,7 +100,7 @@ int build_target(const char *target) {
 
         /* target is now in the cwd so change path accordingly */
         char *btarget = xbasename(target);
-        char *bdo_file = xbasename(do_file);
+        char *bdo_file = xbasename(dofiles->chosen);
         char *btemp_output = xbasename(temp_output);
 
         char **argv = parse_shebang(btarget, bdo_file, btemp_output);
@@ -123,7 +129,7 @@ int build_target(const char *target) {
     if (WIFEXITED(status)) {
         if (WEXITSTATUS(status)) {
             log_err("redo: invoked do-file %s failed: %d\n",
-                    do_file, WEXITSTATUS(status));
+                    dofiles->chosen, WEXITSTATUS(status));
             exit(EXIT_FAILURE);
         } else {
             /* successful */
@@ -138,6 +144,14 @@ int build_target(const char *target) {
         exit(EXIT_FAILURE);
     }
 
+    /* depend on the do-file */
+    add_dep(dofiles->chosen, target, 'c');
+    write_dep_hash(dofiles->chosen);
+
+    /* redo-ifcreate on specific if general was chosen */
+    if (dofiles->general == dofiles->chosen)
+        add_dep(dofiles->specific, target, 'e');
+
     if (remove_temp) {
         if (remove(temp_output))
             if (errno != ENOENT)
@@ -150,7 +164,7 @@ int build_target(const char *target) {
     }
 
     free(temp_output);
-    free(do_file);
+    free_do_attr(dofiles);
 
     return 0;
 }
@@ -190,27 +204,33 @@ static char **parse_shebang(char *target, char *dofile, char *temp_output) {
     return argv;
 }
 
-/* Returns the right do-file for target. */
-static char *get_do_file(const char *target) {
-    /* target + ".do" */
-    char *temp = concat(2, target, do_file_ext);
-    if (fexists(temp))
-        return temp;
-    free(temp);
+/* Return a struct with all the possible do-files, and the chosen one. */
+static struct do_attr *get_dofiles(const char *target) {
+    struct do_attr *dofiles = safe_malloc(sizeof(struct do_attr));
 
-    /* default + get_extension(target) + ".do" */
-    temp = concat(3, default_name, take_extension(target), do_file_ext);
-    if (fexists(temp))
-        return temp;
-    free(temp);
+    dofiles->specific = concat(2, target, ".do");
+    dofiles->general = concat(3, "default", take_extension(target), ".do");
+    dofiles->redofile = safe_strdup("Redofile");
 
-    /* Redofile */
-    temp = safe_strdup("Redofile");
-    if (fexists(temp))
-        return temp;
-    free(temp);
+    if (fexists(dofiles->specific))
+        dofiles->chosen = dofiles->specific;
+    else if (fexists(dofiles->general))
+        dofiles->chosen = dofiles->general;
+    else if (fexists(dofiles->redofile))
+        dofiles->chosen = dofiles->redofile;
+    else
+        dofiles->chosen = NULL;
 
-    return NULL;
+    return dofiles;
+}
+
+/* Free the do_attr struct. */
+static void free_do_attr(struct do_attr *thing) {
+    assert(thing);
+    free(thing->specific);
+    free(thing->general);
+    free(thing->redofile);
+    free(thing);
 }
 
 /* Breaks cmd at spaces and stores a pointer to each argument in the returned
@@ -293,12 +313,15 @@ static char *get_dep_path(const char *target) {
     return dep_path;
 }
 
-/* Add the dependency target, with the identifier indent. */
-void add_dep(const char *target, int indent) {
-    assert(getenv(redo_parent_target));
+/* Add the dependency target, with the identifier ident. If parent is NULL, the
+ * value of the environment variable REDO_PARENT will be taken instead. */
+void add_dep(const char *target, const char *parent, int ident) {
+    if (!parent) {
+        assert(getenv(redo_parent_target));
+        parent = getenv(redo_parent_target);
+    }
 
-    char *parent_target = getenv(redo_parent_target);
-    char *dep_path = get_dep_path(parent_target);
+    char *dep_path = get_dep_path(parent);
 
     FILE *fp = fopen(dep_path, "rb+");
     if (!fp) {
@@ -317,7 +340,7 @@ void add_dep(const char *target, int indent) {
 
     char *reltarget = get_relpath(target);
 
-    putc(indent, fp);
+    putc(ident, fp);
     fputs(reltarget, fp);
     putc('\0', fp);
 

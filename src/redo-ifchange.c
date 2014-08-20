@@ -21,6 +21,6 @@ int main(int argc, char *argv[]) {
         } else {
             /*printf("=> yes\n");*/
         }
-        add_dep(argv[i], 'c');
+        add_dep(argv[i], NULL, 'c');
     }
 }
