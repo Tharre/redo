@@ -19,8 +19,8 @@
 #include <fcntl.h>
 
 #include <libgen.h> /* dirname(), basename() */
-#include <openssl/sha.h>
 
+#include "sha1.h"
 #include "build.h"
 #include "util.h"
 #include "filepath.h"
@@ -371,7 +371,7 @@ static void hash_file(const char *target, unsigned char (*hash)[HASHSIZE]) {
 static void write_dep_hash(const char *target) {
     assert(getenv("REDO_MAGIC"));
 
-    unsigned char hash[SHA_DIGEST_LENGTH];
+    unsigned char hash[HASHSIZE];
     unsigned magic = atoi(getenv("REDO_MAGIC"));
 
     hash_file(target, &hash);
