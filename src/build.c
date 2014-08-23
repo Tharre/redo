@@ -29,12 +29,6 @@
 
 #define HASHSIZE 20
 
-const char temp_ext[] = ".redoing.tmp";
-const char deps_dir[] = "/.redo/deps/";
-const char redo_root[] = "REDO_ROOT";
-const char redo_parent_target[] = "REDO_PARENT_TARGET";
-const char redo_magic[] = "REDO_MAGIC";
-
 static struct do_attr *get_dofiles(const char *target);
 static void free_do_attr(struct do_attr *thing);
 static char **parse_shebang(char *target, char *dofile, char *temp_output);
@@ -81,7 +75,7 @@ int build_target(const char *target) {
             fatal(ERRM_REMOVE, dep_file);
     free(dep_file);
 
-    char *temp_output = concat(2, target, temp_ext);
+    char *temp_output = concat(2, target, ".redoing.tmp");
 
     pid_t pid = fork();
     if (pid == -1) {
@@ -105,9 +99,9 @@ int build_target(const char *target) {
 
         char **argv = parse_shebang(btarget, bdo_file, btemp_output);
 
-        /* set REDO_PARENT_TARGET */
-        if (setenv(redo_parent_target, target, 1))
-            fatal(ERRM_SETENV, redo_parent_target, target);
+        /* set "REDO_PARENT_TARGET" */
+        if (setenv("REDO_PARENT_TARGET", target, 1))
+            fatal(ERRM_SETENV, "REDO_PARENT_TARGET", target);
 
         /* excelp() has nearly everything we want: automatic parsing of the
            shebang line through execve() and fallback to /bin/sh if no valid
@@ -284,11 +278,11 @@ static char *xrealpath(const char *path) {
     return abstarget;
 }
 
-/* Return the relative path against REDO_ROOT of target. */
+/* Return the relative path against "REDO_ROOT" of target. */
 static char *get_relpath(const char *target) {
-    assert(getenv(redo_root));
+    assert(getenv("REDO_ROOT"));
 
-    char *root = getenv(redo_root);
+    char *root = getenv("REDO_ROOT");
     char *abstarget = xrealpath(target);
 
     if (!abstarget)
@@ -301,12 +295,12 @@ static char *get_relpath(const char *target) {
 
 /* Return the dependency file path of target. */
 static char *get_dep_path(const char *target) {
-    assert(getenv(redo_root));
+    assert(getenv("REDO_ROOT"));
 
-    char *root = getenv(redo_root);
+    char *root = getenv("REDO_ROOT");
     char *reltarget = get_relpath(target);
     char *safe_target = transform_path(reltarget);
-    char *dep_path = concat(3, root, deps_dir, safe_target);
+    char *dep_path = concat(3, root, "/.redo/deps/", safe_target);
 
     free(reltarget);
     free(safe_target);
@@ -317,8 +311,8 @@ static char *get_dep_path(const char *target) {
  * value of the environment variable REDO_PARENT will be taken instead. */
 void add_dep(const char *target, const char *parent, int ident) {
     if (!parent) {
-        assert(getenv(redo_parent_target));
-        parent = getenv(redo_parent_target);
+        assert(getenv("REDO_PARENT_TARGET"));
+        parent = getenv("REDO_PARENT_TARGET");
     }
 
     char *dep_path = get_dep_path(parent);
@@ -375,10 +369,10 @@ static void hash_file(const char *target, unsigned char (*hash)[HASHSIZE]) {
 
 /* Calculate and store the hash of target in the right dependency file. */
 static void write_dep_hash(const char *target) {
-    assert(getenv(redo_magic));
+    assert(getenv("REDO_MAGIC"));
 
     unsigned char hash[SHA_DIGEST_LENGTH];
-    unsigned magic = atoi(getenv(redo_magic));
+    unsigned magic = atoi(getenv("REDO_MAGIC"));
 
     hash_file(target, &hash);
 
@@ -401,7 +395,7 @@ static void write_dep_hash(const char *target) {
 /* Parse the dependency information from the dependency record and check if
    those are up-to-date. */
 static bool dependencies_changed(char buf[], size_t read) {
-    char *root = getenv(redo_root);
+    char *root = getenv("REDO_ROOT");
     char *ptr = buf;
 
     for (size_t i = 0; i < read; ++i) {
@@ -451,7 +445,7 @@ bool has_changed(const char *target, int ident, bool is_sub_dependency) {
 
         free(dep_path);
 
-        if (*(unsigned *) buf == (unsigned) atoi(getenv(redo_magic)))
+        if (*(unsigned *) buf == (unsigned) atoi(getenv("REDO_MAGIC")))
             return is_sub_dependency;
 
         unsigned char hash[HASHSIZE];
