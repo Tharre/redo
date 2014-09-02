@@ -12,7 +12,6 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <time.h>
-#include <math.h>
 #include <limits.h>
 #include <unistd.h>
 
@@ -23,8 +22,8 @@
 
 
 /* Returns the amount of digits a number n has in decimal. */
-static inline int digits(unsigned n) {
-  return (int) log10(n) + 1;
+static inline unsigned digits(unsigned n) {
+    return n ? 1 + digits(n/10) : n;
 }
 
 int main(int argc, char *argv[]) {
