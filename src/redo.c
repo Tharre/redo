@@ -37,7 +37,7 @@ int main(int argc, char *argv[]) {
     if (!cwd)
         fatal("redo: failed to obtain cwd");
     if (setenv("REDO_ROOT", cwd, 0))
-        fatal("redo: failed to setenv %s to %s", "REDO_ROOT", cwd);
+        fatal("redo: failed to setenv REDO_ROOT to %s", cwd);
     free(cwd);
 
     /* set REDO_MAGIC */
