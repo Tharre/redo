@@ -128,20 +128,26 @@ off_t fsize(const char *fn) {
     return st.st_size;
 }
 
-/* Create the directory dir, while removing other 'files' with the same name. */
-void mkdirp(const char *dir) {
+/* Create the directory dir, while removing other 'files' with the same name.
+   Returns true if the directory had to be created or false if it existed */
+// TODO: fix confusing name
+bool mkdirp(const char *dir) {
     struct stat st;
     if (stat(dir, &st)) {
+        /* dir doesn't exist or stat failed */
         if (errno != ENOENT)
             fatal(ERRM_STAT, dir);
         if (mkdir(dir, 0755))
             fatal(ERRM_MKDIR, dir);
+        return 1;
     } else {
         if (!S_ISDIR(st.st_mode)) {
             if (remove(dir))
                 fatal(ERRM_REMOVE, dir);
             if (mkdir(dir, 0755))
                 fatal(ERRM_MKDIR, dir);
+            return 1;
         }
+        return 0;
     }
 }

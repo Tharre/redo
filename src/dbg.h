@@ -34,9 +34,9 @@
 
 #define log_err(...) LOG_HELPER(_FILENAME, __LINE__, __VA_ARGS__)
 #define fatal(...) \
-    {FATAL_HELPER(__VA_ARGS__, strerror(errno)); exit(EXIT_FAILURE);}
+    ({FATAL_HELPER(__VA_ARGS__, strerror(errno)); exit(EXIT_FAILURE);})
 #define fatal_(f,l,...) \
-    {FATAL_HELPER_(f, l, __VA_ARGS__, strerror(errno)); exit(EXIT_FAILURE);}
+    ({FATAL_HELPER_(f, l, __VA_ARGS__, strerror(errno)); exit(EXIT_FAILURE);})
 
 #define assert_str_equal(a,b) ({ \
     if (strcmp(a, b)) { \

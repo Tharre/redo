@@ -26,10 +26,10 @@ static inline unsigned digits(unsigned n) {
     return n ? 1 + digits(n/10) : n;
 }
 
-int main(int argc, char *argv[]) {
+void prepare_env() {
     /* create the dependency store if it doesn't already exist */
-    mkdirp(".redo");
-    mkdirp(".redo/deps");
+    if (mkdirp(".redo") && mkdirp(".redo/deps"))
+        fprintf(stderr, "redo: creating dependency store ...\n");
 
     /* set REDO_ROOT */
     char *cwd = getcwd(NULL, 0);
@@ -43,11 +43,12 @@ int main(int argc, char *argv[]) {
     srand(time(NULL));
     char magic_str[digits(UINT_MAX) + 1];
     sprintf(magic_str, "%u", rand());
-
-    debug("magic number: %s\n", magic_str);
-
     if (setenv("REDO_MAGIC", magic_str, 0))
         fatal("setenv()");
+}
+
+int main(int argc, char *argv[]) {
+    prepare_env();
 
     if (argc < 2) {
         build_target("all");

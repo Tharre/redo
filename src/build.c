@@ -58,7 +58,7 @@ int build_target(const char *target) {
             free_do_attr(dofiles);
             return 0;
         }
-        log_err("%s couldn't be built because no "
+        log_err("'%s' couldn't be built because no "
                 "suitable do-file exists\n", target);
         free_do_attr(dofiles);
         return 1;
@@ -168,7 +168,7 @@ int build_target(const char *target) {
 static char **parse_shebang(char *target, char *dofile, char *temp_output) {
     FILE *fp = fopen(dofile, "rb");
     if (!fp)
-        fatal(ERRM_FOPEN, dofile)
+        fatal(ERRM_FOPEN, dofile);
 
     char buf[1024];
 
@@ -348,7 +348,7 @@ void add_dep(const char *target, const char *parent, int ident) {
 }
 
 /* Hash target, storing the result in hash. */
-static void hash_file(const char *target, unsigned char (*hash)[HASHSIZE]) {
+static void hash_file(const char *target, unsigned char *hash) {
     FILE *in = fopen(target, "rb");
     if (!in)
         fatal(ERRM_FOPEN, target);
@@ -363,7 +363,7 @@ static void hash_file(const char *target, unsigned char (*hash)[HASHSIZE]) {
 
     if (ferror(in))
         fatal(ERRM_FREAD, target);
-    SHA1_Final(*hash, &context);
+    SHA1_Final(hash, &context);
     fclose(in);
 }
 
@@ -374,7 +374,7 @@ static void write_dep_hash(const char *target) {
     unsigned char hash[HASHSIZE];
     unsigned magic = atoi(getenv("REDO_MAGIC"));
 
-    hash_file(target, &hash);
+    hash_file(target, hash);
 
     char *dep_path = get_dep_path(target);
     int out = open(dep_path, O_WRONLY | O_CREAT, 0644);
@@ -399,20 +399,20 @@ static bool dependencies_changed(char buf[], size_t read) {
     char *ptr = buf;
 
     for (size_t i = 0; i < read; ++i) {
-        if (!buf[i]) {
-            if (is_absolute(&ptr[1])) {
-                if (has_changed(&ptr[1], ptr[0], true))
-                    return true;
-            } else {
-                char *abs = concat(3, root, "/", &ptr[1]);
-                if (has_changed(abs, ptr[0], true)) {
-                    free(abs);
-                    return true;
-                }
+        if (buf[i])
+            continue;
+        if (is_absolute(&ptr[1])) {
+            if (has_changed(&ptr[1], ptr[0], true))
+                return true;
+        } else {
+            char *abs = concat(3, root, "/", &ptr[1]);
+            if (has_changed(abs, ptr[0], true)) {
                 free(abs);
+                return true;
             }
-            ptr = &buf[i+1];
+            free(abs);
         }
+        ptr = &buf[i+1];
     }
     return false;
 }
@@ -449,7 +449,7 @@ bool has_changed(const char *target, int ident, bool is_sub_dependency) {
             return is_sub_dependency;
 
         unsigned char hash[HASHSIZE];
-        hash_file(target, &hash);
+        hash_file(target, hash);
         if (memcmp(hash, buf+sizeof(unsigned), HASHSIZE)) {
             /*debug("Hash doesn't match for %s\n", target);*/
             return true;
@@ -474,4 +474,8 @@ bool has_changed(const char *target, int ident, bool is_sub_dependency) {
         log_err("Unknown identifier '%c'\n", ident);
         exit(EXIT_FAILURE);
     }
+}
+
+bool environment_sane() {
+    return getenv("REDO_ROOT") && getenv("REDO_PARENT_TARGET") && getenv("REDO_MAGIC");
 }

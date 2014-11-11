@@ -13,6 +13,12 @@
 #include "dbg.h"
 
 int main(int argc, char *argv[]) {
+    if (!environment_sane()) {
+        fprintf(stderr, "redo: environment variables are missing, \
+                         please use %s only in do scripts.\n", argv[0]);
+        exit(1);
+    }
+
     for (int i = 1; i < argc; ++i) {
         /*debug("Testing if %s is up-to-date ...\n", argv[i]);*/
         if (has_changed(argv[i], 'c', false)) {
@@ -23,4 +29,6 @@ int main(int argc, char *argv[]) {
         }
         add_dep(argv[i], NULL, 'c');
     }
+
+    return 0;
 }

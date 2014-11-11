@@ -14,5 +14,6 @@
 extern void add_dep(const char *target, const char *parent, int ident);
 extern bool has_changed(const char *target, int ident, bool is_sub_dependency);
 extern int build_target(const char *target);
+extern bool environment_sane();
 
 #endif
