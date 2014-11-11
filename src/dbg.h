@@ -24,7 +24,7 @@
 #define LOG_HELPER(f,l,...) fprintf(stderr, "("f":"STRINGIFY(l)"): "__VA_ARGS__)
 #define FATAL_HELPER(M, ...) log_err(M ": %s\n", __VA_ARGS__)
 #define FATAL_HELPER_(f,l,M,...) \
-    fprintf(stderr, "(%s:%u): " M ": %s\n", f, l, __VA_ARGS__)
+	fprintf(stderr, "(%s:%u): " M ": %s\n", f, l, __VA_ARGS__)
 
 #ifdef NDEBUG
 #define debug(...)
@@ -34,22 +34,22 @@
 
 #define log_err(...) LOG_HELPER(_FILENAME, __LINE__, __VA_ARGS__)
 #define fatal(...) \
-    ({FATAL_HELPER(__VA_ARGS__, strerror(errno)); exit(EXIT_FAILURE);})
+	({FATAL_HELPER(__VA_ARGS__, strerror(errno)); exit(EXIT_FAILURE);})
 #define fatal_(f,l,...) \
-    ({FATAL_HELPER_(f, l, __VA_ARGS__, strerror(errno)); exit(EXIT_FAILURE);})
+	({FATAL_HELPER_(f, l, __VA_ARGS__, strerror(errno)); exit(EXIT_FAILURE);})
 
 #define assert_str_equal(a,b) ({ \
-    if (strcmp(a, b)) { \
-        log_err("Assertion error: '%s' == '%s'\n", a, b); \
-        abort(); \
-    } \
+	if (strcmp(a, b)) { \
+		log_err("Assertion error: '%s' == '%s'\n", a, b); \
+		abort(); \
+	} \
 })
 
 #define assert_int_equal(a,b) ({ \
-    if (a != b) { \
-        log_err("Assertion error: '%d' == '%d'\n", a, b); \
-        abort(); \
-    } \
+	if (a != b) { \
+		log_err("Assertion error: '%d' == '%d'\n", a, b); \
+		abort(); \
+	} \
 })
 
 /* A neat macro that silences unused parameter warnings compiler independant */

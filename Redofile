@@ -8,19 +8,19 @@ export VERSION="pre-0.01"
 DESTDIR=${DESTDIR-/usr/bin}
 
 if [ "$1" = "all" ]; then
-    redo-ifchange $OUTDIR/redo $OUTDIR/redo-ifchange $OUTDIR/redo-ifcreate \
-                  $OUTDIR/redo-always
+	redo-ifchange $OUTDIR/redo $OUTDIR/redo-ifchange $OUTDIR/redo-ifcreate \
+		$OUTDIR/redo-always
 elif [ "$1" = "clean" ]; then
-    rm -rf $OUTDIR/*.tmp $OUTDIR/*.o $OUTDIR/redo $OUTDIR/redo-ifchange \
-           $OUTDIR/redo-ifcreate $OUTDIR/redo-always $OUTDIR/CC
-    # autoconf stuff
-    rm -rf autom4te.cache config.h.in configure config.status config.log config.h
+	rm -rf $OUTDIR/*.tmp $OUTDIR/*.o $OUTDIR/redo $OUTDIR/redo-ifchange \
+		$OUTDIR/redo-ifcreate $OUTDIR/redo-always $OUTDIR/CC
+	# autoconf stuff
+	rm -rf autom4te.cache config.h.in configure config.status config.log config.h
 elif [ "$1" = "install" ]; then
-    redo-ifchange all
-    mkdir -p $DESTDIR
-    install $OUTDIR/redo $DESTDIR
-    install $OUTDIR/redo-ifchange $DESTDIR
-    install $OUTDIR/redo-ifcreate $DESTDIR
-    install $OUTDIR/redo-always $DESTDIR
-    echo "Finished installing."
+	redo-ifchange all
+	mkdir -p $DESTDIR
+	install $OUTDIR/redo $DESTDIR
+	install $OUTDIR/redo-ifchange $DESTDIR
+	install $OUTDIR/redo-ifcreate $DESTDIR
+	install $OUTDIR/redo-always $DESTDIR
+	echo "Finished installing."
 fi

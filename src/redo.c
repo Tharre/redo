@@ -23,39 +23,39 @@
 
 /* Returns the amount of digits a number n has in decimal. */
 static inline unsigned digits(unsigned n) {
-    return n ? 1 + digits(n/10) : n;
+	return n ? 1 + digits(n/10) : n;
 }
 
 void prepare_env() {
-    /* create the dependency store if it doesn't already exist */
-    if (mkdirp(".redo") && mkdirp(".redo/deps"))
-        fprintf(stderr, "redo: creating dependency store ...\n");
+	/* create the dependency store if it doesn't already exist */
+	if (mkdirp(".redo") && mkdirp(".redo/deps"))
+		fprintf(stderr, "redo: creating dependency store ...\n");
 
-    /* set REDO_ROOT */
-    char *cwd = getcwd(NULL, 0);
-    if (!cwd)
-        fatal("redo: failed to obtain cwd");
-    if (setenv("REDO_ROOT", cwd, 0))
-        fatal("redo: failed to setenv REDO_ROOT to %s", cwd);
-    free(cwd);
+	/* set REDO_ROOT */
+	char *cwd = getcwd(NULL, 0);
+	if (!cwd)
+		fatal("redo: failed to obtain cwd");
+	if (setenv("REDO_ROOT", cwd, 0))
+		fatal("redo: failed to setenv REDO_ROOT to %s", cwd);
+	free(cwd);
 
-    /* set REDO_MAGIC */
-    srand(time(NULL));
-    char magic_str[digits(UINT_MAX) + 1];
-    sprintf(magic_str, "%u", rand());
-    if (setenv("REDO_MAGIC", magic_str, 0))
-        fatal("setenv()");
+	/* set REDO_MAGIC */
+	srand(time(NULL));
+	char magic_str[digits(UINT_MAX) + 1];
+	sprintf(magic_str, "%u", rand());
+	if (setenv("REDO_MAGIC", magic_str, 0))
+		fatal("setenv()");
 }
 
 int main(int argc, char *argv[]) {
-    prepare_env();
+	prepare_env();
 
-    if (argc < 2) {
-        build_target("all");
-    } else {
-        int i;
-        for (i = 1; i < argc; ++i) {
-            build_target(argv[i]);
-        }
-    }
+	if (argc < 2) {
+		build_target("all");
+	} else {
+		int i;
+		for (i = 1; i < argc; ++i) {
+			build_target(argv[i]);
+		}
+	}
 }
