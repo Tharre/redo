@@ -46,7 +46,7 @@ struct do_attr {
 
 
 /* Build given target, using it's do-file. */
-int build_target(const char *target) {
+void build_target(const char *target) {
 	/* get the do-file which we are going to execute */
 	struct do_attr *dofiles = get_dofiles(target);
 	if (!dofiles->chosen) {
@@ -55,12 +55,10 @@ int build_target(const char *target) {
 			   then we treat it as a source */
 			write_dep_hash(target);
 			free_do_attr(dofiles);
-			return 0;
+			return;
 		}
-		log_err("'%s' couldn't be built because no "
-				"suitable do-file exists\n", target);
-		free_do_attr(dofiles);
-		return 1;
+
+		die("%s couldn't be built as no suitable do-file exists\n", target);
 	}
 
 	char *reltarget = get_relpath(target);
@@ -71,7 +69,7 @@ int build_target(const char *target) {
 	char *dep_file = get_dep_path(target);
 	if (remove(dep_file))
 		if (errno != ENOENT)
-			fatal(ERRM_REMOVE, dep_file);
+			diem("redo: failed to remove %s", dep_file);
 	free(dep_file);
 
 	char *temp_output = concat(2, target, ".redoing.tmp");
@@ -79,15 +77,15 @@ int build_target(const char *target) {
 	pid_t pid = fork();
 	if (pid == -1) {
 		/* failure */
-		fatal(ERRM_FORK);
+		diem("redo: failed to fork() new process");
 	} else if (pid == 0) {
 		/* child */
 
 		/* change directory to our target */
-		char *dirc = safe_strdup(target);
+		char *dirc = xstrdup(target);
 		char *dtarget = dirname(dirc);
 		if (chdir(dtarget) == -1)
-			fatal(ERRM_CHDIR, dtarget);
+			diem("redo: failed to change directory to %s", dtarget);
 
 		free(dirc);
 
@@ -100,7 +98,7 @@ int build_target(const char *target) {
 
 		/* set "REDO_PARENT_TARGET" */
 		if (setenv("REDO_PARENT_TARGET", target, 1))
-			fatal(ERRM_SETENV, "REDO_PARENT_TARGET", target);
+			diem("redo: failed to setenv() REDO_PARENT_TARGET to %s", target);
 
 		/* excelp() has nearly everything we want: automatic parsing of the
 		   shebang line through execve() and fallback to /bin/sh if no valid
@@ -110,20 +108,19 @@ int build_target(const char *target) {
 		execv(argv[0], argv);
 
 		/* execv should never return */
-		fatal(ERRM_EXEC, argv[0]);
+		diem("redo: failed to replace child process with %s", argv[0]);
 	}
 
 	/* parent */
 	int status;
 	if (waitpid(pid, &status, 0) == -1)
-		fatal("waitpid() failed: ");
+		diem("waitpid() failed: ");
 	bool remove_temp = true;
 
 	if (WIFEXITED(status)) {
 		if (WEXITSTATUS(status)) {
-			log_err("redo: invoked do-file %s failed: %d\n",
-					dofiles->chosen, WEXITSTATUS(status));
-			exit(EXIT_FAILURE);
+			die("redo: invoked do-file %s failed: %d\n", dofiles->chosen,
+			    WEXITSTATUS(status));
 		} else {
 			/* successful */
 
@@ -133,8 +130,7 @@ int build_target(const char *target) {
 		}
 	} else {
 		/* something very wrong happened with the child */
-		log_err("redo: invoked do-file did not terminate correctly\n");
-		exit(EXIT_FAILURE);
+		die("redo: invoked do-file did not terminate correctly\n");
 	}
 
 	/* depend on the do-file */
@@ -153,18 +149,16 @@ int build_target(const char *target) {
 	if (remove_temp) {
 		if (remove(temp_output))
 			if (errno != ENOENT)
-				fatal(ERRM_REMOVE, temp_output);
+				diem("redo: failed to remove %s", temp_output);
 	} else {
 		if (rename(temp_output, target))
-			fatal(ERRM_RENAME, temp_output, target);
+			diem("redo: failed to rename %s to %s", temp_output, target);
 
 		write_dep_hash(target);
 	}
 
 	free(temp_output);
 	free_do_attr(dofiles);
-
-	return 0;
 }
 
 /* Read and parse shebang and return an argv-like pointer array containing the
@@ -172,13 +166,13 @@ int build_target(const char *target) {
 static char **parse_shebang(char *target, char *dofile, char *temp_output) {
 	FILE *fp = fopen(dofile, "rb");
 	if (!fp)
-		fatal(ERRM_FOPEN, dofile);
+		diem("redo: failed to open %s", dofile);
 
 	char buf[1024];
 
 	buf[ fread(buf, 1, sizeof(buf)-1, fp) ] = '\0';
 	if (ferror(fp))
-		fatal(ERRM_FREAD, dofile);
+		diem("redo: failed to read from %s", dofile);
 
 	fclose(fp);
 
@@ -187,13 +181,13 @@ static char **parse_shebang(char *target, char *dofile, char *temp_output) {
 	if (buf[0] == '#' && buf[1] == '!') {
 		argv = parsecmd(&buf[2], &i, 5);
 	} else {
-		argv = safe_malloc(7 * sizeof(char*));
+		argv = xmalloc(7 * sizeof(char*));
 		argv[i++] = "/bin/sh";
 		argv[i++] = "-e";
 	}
 
 	argv[i++] = dofile;
-	argv[i++] = (char*) target;
+	argv[i++] = target;
 	char *basename = remove_ext(target);
 	argv[i++] = basename;
 	argv[i++] = temp_output;
@@ -204,14 +198,14 @@ static char **parse_shebang(char *target, char *dofile, char *temp_output) {
 
 /* Return a struct with all the possible do-files, and the chosen one. */
 static struct do_attr *get_dofiles(const char *target) {
-	struct do_attr *dofiles = safe_malloc(sizeof(struct do_attr));
+	struct do_attr *dofiles = xmalloc(sizeof(struct do_attr));
 
 	dofiles->specific = concat(2, target, ".do");
 	if (!is_absolute(target)) {
 		dofiles->general = concat(3, "default", take_extension(target), ".do");
-		dofiles->redofile = safe_strdup("Redofile");
+		dofiles->redofile = xstrdup("Redofile");
 	} else {
-		char *dirc = safe_strdup(target);
+		char *dirc = xstrdup(target);
 		char *dt = dirname(dirc);
 
 		dofiles->general = concat(4, dt, "/default", take_extension(target), ".do");
@@ -244,7 +238,7 @@ static void free_do_attr(struct do_attr *thing) {
    returned array is guaranteed to have at least keep_free entries left. */
 static char **parsecmd(char *cmd, size_t *i, size_t keep_free) {
 	size_t argv_len = 16;
-	char **argv = safe_malloc(argv_len * sizeof(char*));
+	char **argv = xmalloc(argv_len * sizeof(char*));
 	size_t j = 0;
 	bool prev_space = true;
 	for (;; ++j) {
@@ -265,7 +259,7 @@ static char **parsecmd(char *cmd, size_t *i, size_t keep_free) {
 			while (*i+keep_free >= argv_len) {
 				argv_len *= 2;
 				debug("Reallocating memory (now %zu elements)\n", argv_len);
-				argv = safe_realloc(argv, argv_len * sizeof(char*));
+				argv = xrealloc(argv, argv_len * sizeof(char*));
 			}
 
 			prev_space = false;
@@ -278,7 +272,7 @@ static char **parsecmd(char *cmd, size_t *i, size_t keep_free) {
 /* Custom version of realpath that doesn't fail if the last part of path
    doesn't exist and allocates memory for the result itself. */
 static char *xrealpath(const char *path) {
-	char *dirc = safe_strdup(path);
+	char *dirc = xstrdup(path);
 	char *dname = dirname(dirc);
 	char *absdir = realpath(dname, NULL);
 	if (!absdir)
@@ -298,9 +292,9 @@ static char *get_relpath(const char *target) {
 	char *abstarget = xrealpath(target);
 
 	if (!abstarget)
-		fatal(ERRM_REALPATH, target);
+		diem("redo: failed to get realpath() of %s", target);
 
-	char *relpath = safe_strdup(make_relative(root, abstarget));
+	char *relpath = xstrdup(make_relative(root, abstarget));
 	free(abstarget);
 	return relpath;
 }
@@ -311,11 +305,11 @@ static char *get_dep_path(const char *target) {
 
 	char *root = getenv("REDO_ROOT");
 	char *reltarget = get_relpath(target);
-	char *safe_target = transform_path(reltarget);
-	char *dep_path = concat(3, root, "/.redo/deps/", safe_target);
+	char *xtarget = transform_path(reltarget);
+	char *dep_path = concat(3, root, "/.redo/deps/", xtarget);
 
 	free(reltarget);
-	free(safe_target);
+	free(xtarget);
 	return dep_path;
 }
 
@@ -334,11 +328,11 @@ void add_dep(const char *target, const char *parent, int ident) {
 		if (errno == ENOENT) {
 			fp = fopen(dep_path, "w");
 			if (!fp)
-				fatal(ERRM_FOPEN, dep_path);
+				diem("redo: failed to open %s", dep_path);
 			/* skip the first n bytes that are reserved for the hash + magic number */
 			fseek(fp, HASHSIZE + sizeof(unsigned int), SEEK_SET);
 		} else {
-			fatal(ERRM_FOPEN, dep_path);
+			diem("redo: failed to open %s", dep_path);
 		}
 	} else {
 		fseek(fp, 0L, SEEK_END);
@@ -351,10 +345,10 @@ void add_dep(const char *target, const char *parent, int ident) {
 	putc('\0', fp);
 
 	if (ferror(fp))
-		fatal(ERRM_WRITE, dep_path);
+		diem("redo: failed to write to %s", dep_path);
 
 	if (fclose(fp))
-		fatal(ERRM_FCLOSE, dep_path);
+		diem("redo: failed to close %s", dep_path);
 	free(dep_path);
 	free(reltarget);
 }
@@ -363,7 +357,7 @@ void add_dep(const char *target, const char *parent, int ident) {
 static void hash_file(const char *target, unsigned char *hash) {
 	FILE *in = fopen(target, "rb");
 	if (!in)
-		fatal(ERRM_FOPEN, target);
+		diem("redo: failed to open %s", target);
 
 	SHA_CTX context;
 	unsigned char data[8192];
@@ -374,7 +368,7 @@ static void hash_file(const char *target, unsigned char *hash) {
 		SHA1_Update(&context, data, read);
 
 	if (ferror(in))
-		fatal(ERRM_FREAD, target);
+		diem("redo: failed to read from %s", target);
 	SHA1_Final(hash, &context);
 	fclose(in);
 }
@@ -391,16 +385,16 @@ static void write_dep_hash(const char *target) {
 	char *dep_path = get_dep_path(target);
 	int out = open(dep_path, O_WRONLY | O_CREAT, 0644);
 	if (out < 0)
-		fatal(ERRM_FOPEN, dep_path);
+		diem("redo: failed to open %s", dep_path);
 
 	if (write(out, &magic, sizeof(unsigned)) < (ssize_t) sizeof(unsigned))
-		fatal("redo: failed to write magic number to '%s'", dep_path);
+		diem("redo: failed to write magic number to '%s'", dep_path);
 
 	if (write(out, hash, sizeof hash) < (ssize_t) sizeof hash)
-		fatal("redo: failed to write hash to '%s'", dep_path);
+		diem("redo: failed to write hash to '%s'", dep_path);
 
 	if (close(out))
-		fatal(ERRM_FCLOSE, dep_path);
+		diem("redo: failed to close %s", dep_path);
 	free(dep_path);
 }
 
@@ -437,13 +431,13 @@ int update_target(const char *target, int ident) {
 				build_target(target);
 				return 1;
 			} else {
-				fatal(ERRM_FOPEN, dep_path);
+				diem("redo: failed to open %s", dep_path);
 			}
 		}
 
 		char buf[8096];
 		if (fread(buf, 1, HEADERSIZE, fp) < HEADERSIZE)
-			fatal("redo: failed to read %zu bytes from %s", HEADERSIZE, dep_path);
+			diem("redo: failed to read %zu bytes from %s", HEADERSIZE, dep_path);
 
 		free(dep_path);
 
@@ -466,7 +460,7 @@ int update_target(const char *target, int ident) {
 			size_t read = fread(buf, 1, sizeof buf, fp);
 
 			if (ferror(fp))
-				fatal("redo: failed to read %zu bytes from file descriptor", sizeof buf);
+				diem("redo: failed to read %zu bytes from file descriptor", sizeof buf);
 
 			char *ptr = buf;
 			for (size_t i = 0; i < read; ++i) {
@@ -501,8 +495,7 @@ int update_target(const char *target, int ident) {
 		return 0;
 
 	default:
-		log_err("Unknown identifier '%c'\n", ident);
-		exit(EXIT_FAILURE);
+		die("redo: unknown identiier '%c'\n", ident);
 	}
 }
 

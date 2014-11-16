@@ -36,7 +36,7 @@ char *remove_ext(const char *str) {
 	if (dot) /* recalculate length to only reach just before the last dot */
 		len = dot - str;
 
-	ret = safe_malloc(len+1);
+	ret = xmalloc(len+1);
 	memcpy(ret, str, len);
 	ret[len] = '\0';
 
@@ -83,7 +83,7 @@ char *transform_path(const char *target) {
 	while (*ptr++)
 		if (*ptr == '!') escape++;
 
-	ptr = safe_malloc((ptr-target) + escape + 1);
+	ptr = xmalloc((ptr-target) + escape + 1);
 	do {
 		if (*target == '/')
 			ptr[i++] = '!';
@@ -121,7 +121,7 @@ off_t fsize(const char *fn) {
 	struct stat st;
 	if (stat(fn, &st)) {
 		if (errno != ENOENT)
-			fatal(ERRM_STAT, fn);
+			diem("redo: failed to aquire stat() information about %s", fn);
 		return -1;
 	}
 
@@ -136,16 +136,16 @@ bool mkdirp(const char *dir) {
 	if (stat(dir, &st)) {
 		/* dir doesn't exist or stat failed */
 		if (errno != ENOENT)
-			fatal(ERRM_STAT, dir);
+			diem("redo: failed to aquire stat() information about %s", dir);
 		if (mkdir(dir, 0755))
-			fatal(ERRM_MKDIR, dir);
+			diem("redo: failed to mkdir() '%s'", dir);
 		return 1;
 	} else {
 		if (!S_ISDIR(st.st_mode)) {
 			if (remove(dir))
-				fatal(ERRM_REMOVE, dir);
+				diem("redo: failed to remove %s", dir);
 			if (mkdir(dir, 0755))
-				fatal(ERRM_MKDIR, dir);
+				diem("redo: failed to mkdir() '%s'", dir);
 			return 1;
 		}
 		return 0;

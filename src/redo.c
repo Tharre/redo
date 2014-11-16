@@ -34,9 +34,9 @@ void prepare_env() {
 	/* set REDO_ROOT */
 	char *cwd = getcwd(NULL, 0);
 	if (!cwd)
-		fatal("redo: failed to obtain cwd");
+		diem("redo: failed to obtain cwd");
 	if (setenv("REDO_ROOT", cwd, 0))
-		fatal("redo: failed to setenv REDO_ROOT to %s", cwd);
+		diem("redo: failed to setenv REDO_ROOT to %s", cwd);
 	free(cwd);
 
 	/* set REDO_MAGIC */
@@ -44,7 +44,7 @@ void prepare_env() {
 	char magic_str[digits(UINT_MAX) + 1];
 	sprintf(magic_str, "%u", rand());
 	if (setenv("REDO_MAGIC", magic_str, 0))
-		fatal("setenv()");
+		diem("redo: failed to setenv() REDO_MAGIC to %s", magic_str);
 }
 
 int main(int argc, char *argv[]) {

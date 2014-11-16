@@ -6,43 +6,56 @@
  * of the MIT license.  See the LICENSE file for details.
  */
 
+#define _XOPEN_SOURCE 500
+#include <assert.h>
+#include <errno.h>
 #include <stdarg.h>
 #include <stdint.h>
-#include <assert.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include "util.h"
 #define _FILENAME "util.c"
 #include "dbg.h"
 
 
-void *safe_malloc_(size_t size, const char *file, unsigned line) {
+/* Print a given formated error message and die. */
+extern void __attribute__((noreturn)) die(const char *err, ...) {
+	assert(err);
+	va_list ap;
+	va_start(ap, err);
+
+	vfprintf(stderr, err, ap);
+
+	va_end(ap);
+	exit(EXIT_FAILURE);
+}
+
+void *xmalloc(size_t size) {
 	assert(size > 0);
 	void *ptr = malloc(size);
 	if (!ptr)
-		fatal_(file, line, ERRM_MALLOC, size);
+		diem("Cannot allocate %zu bytes", size);
 
 	return ptr;
 }
 
-void *safe_realloc_(void *ptr, size_t size, const char *file, unsigned line) {
+void *xrealloc(void *ptr, size_t size) {
 	assert(size > 0 && ptr);
-	void *ptr2 = realloc(ptr, size);
-	if (!ptr2)
-		fatal_(file, line, ERRM_REALLOC, size);
+	if (!(ptr = realloc(ptr, size)))
+		diem("Cannot reallocate %zu bytes", size);
 
-	return ptr2;
+	return ptr;
 }
 
-char *safe_strdup_(const char *str, const char *file, unsigned line) {
+char *xstrdup(const char *str) {
 	assert(str);
-	size_t len = strlen(str) + 1;
-	char *ptr = malloc(len);
-	if (!ptr)
-		fatal_(file, line, ERRM_MALLOC, len);
+	if (!(str = strdup(str)))
+		diem("Insufficient memory for string allocation");
 
-	return memcpy(ptr, str, len);
+	return (char*) str;
 }
-
 
 /* For concating multiple strings into a single larger one. */
 char *concat(size_t count, ...) {
@@ -56,7 +69,7 @@ char *concat(size_t count, ...) {
 		size += args_len[i];
 	}
 	++size;
-	char *result = safe_malloc(size);
+	char *result = xmalloc(size);
 	/* debug("Allocated %zu bytes at %p\n", size, result); */
 	uintptr_t offset = 0;
 	for (i = 0; i < count; ++i) {
