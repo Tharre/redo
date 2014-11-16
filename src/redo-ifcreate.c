@@ -12,8 +12,7 @@
 
 int main(int argc, char *argv[]) {
 	for (int i = 1; i < argc; ++i) {
-		if (has_changed(argv[i], 'e', false))
-			build_target(argv[i]);
+		update_target(argv[i], 'e');
 		add_dep(argv[i], NULL, 'e');
 	}
 }

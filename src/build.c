@@ -36,7 +36,6 @@ static char **parsecmd(char *cmd, size_t *i, size_t keep_free);
 static char *get_relpath(const char *target);
 static char *get_dep_path(const char *target);
 static void write_dep_hash(const char *target);
-static bool dependencies_changed(char buf[], size_t read);
 
 struct do_attr {
 	char *specific;
@@ -139,8 +138,13 @@ int build_target(const char *target) {
 	}
 
 	/* depend on the do-file */
+	char *temp = get_dep_path(dofiles->chosen);
+	if (!fexists(temp)) {
+		write_dep_hash(dofiles->chosen);
+	}
+	free(temp);
+
 	add_dep(dofiles->chosen, target, 'c');
-	write_dep_hash(dofiles->chosen);
 
 	/* redo-ifcreate on specific if general was chosen */
 	if (dofiles->general == dofiles->chosen)
@@ -203,8 +207,16 @@ static struct do_attr *get_dofiles(const char *target) {
 	struct do_attr *dofiles = safe_malloc(sizeof(struct do_attr));
 
 	dofiles->specific = concat(2, target, ".do");
-	dofiles->general = concat(3, "default", take_extension(target), ".do");
-	dofiles->redofile = safe_strdup("Redofile");
+	if (!is_absolute(target)) {
+		dofiles->general = concat(3, "default", take_extension(target), ".do");
+		dofiles->redofile = safe_strdup("Redofile");
+	} else {
+		char *dirc = safe_strdup(target);
+		char *dt = dirname(dirc);
+
+		dofiles->general = concat(4, dt, "/default", take_extension(target), ".do");
+		dofiles->redofile = concat(2, dt, "/Redofile");
+	}
 
 	if (fexists(dofiles->specific))
 		dofiles->chosen = dofiles->specific;
@@ -392,40 +404,27 @@ static void write_dep_hash(const char *target) {
 	free(dep_path);
 }
 
-/* Parse the dependency information from the dependency record and check if
-   those are up-to-date. */
-static bool dependencies_changed(char buf[], size_t read) {
-	char *root = getenv("REDO_ROOT");
-	char *ptr = buf;
-
-	for (size_t i = 0; i < read; ++i) {
-		if (buf[i])
-			continue;
-		if (is_absolute(&ptr[1])) {
-			if (has_changed(&ptr[1], ptr[0], true))
-				return true;
-		} else {
-			char *abs = concat(3, root, "/", &ptr[1]);
-			if (has_changed(abs, ptr[0], true)) {
-				free(abs);
-				return true;
-			}
-			free(abs);
-		}
-		ptr = &buf[i+1];
-	}
-	return false;
-}
-
-/* Checks if a target should be rebuild, given it's identifier. */
-bool has_changed(const char *target, int ident, bool is_sub_dependency) {
+int update_target(const char *target, int ident) {
 	switch(ident) {
-	case 'a': return true;
-	case 'e': return fexists(target);
+	case 'a':
+		debug("%s is not up-to-date: always rebuild\n", target);
+		build_target(target);
+		return 1;
+	case 'e':
+		if (fexists(target)) {
+			debug("%s is not up-to-date: target exist and e ident was chosen\n", target);
+			build_target(target);
+			return 1;
+		}
+		return 0;
 	case 'c':
 #define HEADERSIZE HASHSIZE + sizeof(unsigned)
-		if (!fexists(target))
-			return true;
+		if (!fexists(target)) {
+			/* target does not exist */
+			debug("%s is not up-to-date: target doesn't exist\n", target);
+			build_target(target);
+			return 1;
+		}
 
 		char *dep_path = get_dep_path(target);
 
@@ -433,7 +432,10 @@ bool has_changed(const char *target, int ident, bool is_sub_dependency) {
 		if (!fp) {
 			if (errno == ENOENT) {
 				/* dependency file does not exist */
-				return true;
+				debug("%s is not up-to-date: dependency file (%s) doesn't exist\n",
+				      target, dep_path);
+				build_target(target);
+				return 1;
 			} else {
 				fatal(ERRM_FOPEN, dep_path);
 			}
@@ -446,29 +448,57 @@ bool has_changed(const char *target, int ident, bool is_sub_dependency) {
 		free(dep_path);
 
 		if (*(unsigned *) buf == (unsigned) atoi(getenv("REDO_MAGIC")))
-			return is_sub_dependency;
+			/* magic number matches */
+			return 1;
 
+		char *root = getenv("REDO_ROOT");
+		bool rebuild = false;
 		unsigned char hash[HASHSIZE];
 		hash_file(target, hash);
 		if (memcmp(hash, buf+sizeof(unsigned), HASHSIZE)) {
-			/*debug("Hash doesn't match for %s\n", target);*/
-			return true;
+			debug("%s is not-up-to-date: hashes don't match\n", target);
+			build_target(target);
+			return 1;
 		}
 
+		/* FIXME: this doesn't work properly if we actually read beyond 8096 bytes */
 		while (!feof(fp)) {
 			size_t read = fread(buf, 1, sizeof buf, fp);
 
 			if (ferror(fp))
 				fatal("redo: failed to read %zu bytes from file descriptor", sizeof buf);
 
-			if (dependencies_changed(buf, read)) {
-				fclose(fp);
-				return true;
+			char *ptr = buf;
+			for (size_t i = 0; i < read; ++i) {
+				if (buf[i])
+					continue;
+				if (!is_absolute(&ptr[1])) {
+					/* if our path is relative we need to prefix it with the
+					   root project directory or the path will be invalid */
+					char *abs = concat(3, root, "/", &ptr[1]);
+					if (update_target(abs, ptr[0])) {
+						debug("%s is not up-to-date: subdependency %s is out-of-date\n",
+						      target, abs);
+						rebuild = true;
+					}
+					free(abs);
+				} else {
+					if (update_target(&ptr[1], ptr[0])) {
+						debug("%s is not up-to-date: subdependency %s is out-of-date\n",
+						      target, &ptr[1]);
+						rebuild = true;
+					}
+				}
+				ptr = &buf[i+1];
 			}
 		}
 
 		fclose(fp);
-		return false;
+		if (rebuild) {
+			build_target(target);
+			return 1;
+		}
+		return 0;
 
 	default:
 		log_err("Unknown identifier '%c'\n", ident);

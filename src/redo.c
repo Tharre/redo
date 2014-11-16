@@ -51,11 +51,11 @@ int main(int argc, char *argv[]) {
 	prepare_env();
 
 	if (argc < 2) {
-		build_target("all");
+		update_target("all", 'a');
 	} else {
 		int i;
 		for (i = 1; i < argc; ++i) {
-			build_target(argv[i]);
+			update_target(argv[i], 'a');
 		}
 	}
 }
