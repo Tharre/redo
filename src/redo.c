@@ -27,6 +27,10 @@ static inline unsigned digits(unsigned n) {
 }
 
 void prepare_env() {
+	if (getenv("REDO_ROOT") && getenv("REDO_PARENT_TARGET")
+	    && getenv("REDO_MAGIC"))
+		return;
+
 	/* create the dependency store if it doesn't already exist */
 	if (mkdirp(".redo") && mkdirp(".redo/deps"))
 		fprintf(stderr, "redo: creating dependency store ...\n");
@@ -36,7 +40,7 @@ void prepare_env() {
 	if (!cwd)
 		diem("redo: failed to obtain cwd");
 	if (setenv("REDO_ROOT", cwd, 0))
-		diem("redo: failed to setenv REDO_ROOT to %s", cwd);
+		diem("redo: failed to setenv() REDO_ROOT to %s", cwd);
 	free(cwd);
 
 	/* set REDO_MAGIC */
@@ -50,12 +54,30 @@ void prepare_env() {
 int main(int argc, char *argv[]) {
 	prepare_env();
 
-	if (argc < 2) {
-		update_target("all", 'a');
-	} else {
-		int i;
-		for (i = 1; i < argc; ++i) {
-			update_target(argv[i], 'a');
+	if (!strcmp(argv[0], "redo")) {
+		if (argc < 2) {
+			update_target("all", 'a');
+		} else {
+			for (int i = 1; i < argc; ++i)
+				update_target(argv[i], 'a');
 		}
+		return EXIT_SUCCESS;
+	} else {
+		char ident;
+		if      (!strcmp(argv[0], "redo-ifchange"))
+			ident = 'c';
+		else if (!strcmp(argv[0], "redo-ifcreate"))
+			ident = 'e';
+		else if (!strcmp(argv[0], "redo-always"))
+			ident = 'a';
+		else
+			die("argv set to unkown value\n");
+
+		for (int i = 1; i < argc; ++i) {
+			update_target(argv[i], ident);
+			add_dep(argv[i], NULL, ident);
+		}
+
+		return EXIT_SUCCESS;
 	}
 }

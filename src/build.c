@@ -498,7 +498,3 @@ int update_target(const char *target, int ident) {
 		die("redo: unknown identiier '%c'\n", ident);
 	}
 }
-
-bool environment_sane() {
-	return getenv("REDO_ROOT") && getenv("REDO_PARENT_TARGET") && getenv("REDO_MAGIC");
-}
