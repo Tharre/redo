@@ -3,7 +3,7 @@
 
 AC_PREREQ([2.68])
 AC_INIT([redo], [VERSION], [BUG-REPORT-ADDRESS])
-AC_CONFIG_SRCDIR([src/redo-ifchange.c])
+AC_CONFIG_SRCDIR([src/redo.c])
 AC_CONFIG_HEADERS([config.h])
 
 # Checks for programs.
