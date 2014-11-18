@@ -40,7 +40,6 @@ static void write_dep_hash(const char *target);
 struct do_attr {
 	char *specific;
 	char *general;
-	char *redofile;
 	char *chosen;
 };
 
@@ -203,21 +202,17 @@ static struct do_attr *get_dofiles(const char *target) {
 	dofiles->specific = concat(2, target, ".do");
 	if (!is_absolute(target)) {
 		dofiles->general = concat(3, "default", take_extension(target), ".do");
-		dofiles->redofile = xstrdup("Redofile");
 	} else {
 		char *dirc = xstrdup(target);
 		char *dt = dirname(dirc);
 
 		dofiles->general = concat(4, dt, "/default", take_extension(target), ".do");
-		dofiles->redofile = concat(2, dt, "/Redofile");
 	}
 
 	if (fexists(dofiles->specific))
 		dofiles->chosen = dofiles->specific;
 	else if (fexists(dofiles->general))
 		dofiles->chosen = dofiles->general;
-	else if (fexists(dofiles->redofile))
-		dofiles->chosen = dofiles->redofile;
 	else
 		dofiles->chosen = NULL;
 
@@ -229,7 +224,6 @@ static void free_do_attr(struct do_attr *thing) {
 	assert(thing);
 	free(thing->specific);
 	free(thing->general);
-	free(thing->redofile);
 	free(thing);
 }
 
