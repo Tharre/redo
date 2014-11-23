@@ -6,7 +6,7 @@
  * of the MIT license.  See the LICENSE file for details.
  */
 
-#define _XOPEN_SOURCE 500
+#define _XOPEN_SOURCE 600
 #include <assert.h>
 #include <errno.h>
 #include <stdarg.h>
