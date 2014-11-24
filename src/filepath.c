@@ -121,7 +121,7 @@ off_t fsize(const char *fn) {
 	struct stat st;
 	if (stat(fn, &st)) {
 		if (errno != ENOENT)
-			diem("redo: failed to aquire stat() information about %s", fn);
+			fatal("redo: failed to aquire stat() information about %s", fn);
 		return -1;
 	}
 
@@ -136,16 +136,16 @@ bool mkdirp(const char *dir) {
 	if (stat(dir, &st)) {
 		/* dir doesn't exist or stat failed */
 		if (errno != ENOENT)
-			diem("redo: failed to aquire stat() information about %s", dir);
+			fatal("redo: failed to aquire stat() information about %s", dir);
 		if (mkdir(dir, 0755))
-			diem("redo: failed to mkdir() '%s'", dir);
+			fatal("redo: failed to mkdir() '%s'", dir);
 		return 1;
 	} else {
 		if (!S_ISDIR(st.st_mode)) {
 			if (remove(dir))
-				diem("redo: failed to remove %s", dir);
+				fatal("redo: failed to remove %s", dir);
 			if (mkdir(dir, 0755))
-				diem("redo: failed to mkdir() '%s'", dir);
+				fatal("redo: failed to mkdir() '%s'", dir);
 			return 1;
 		}
 		return 0;

@@ -36,7 +36,7 @@ void *xmalloc(size_t size) {
 	assert(size > 0);
 	void *ptr = malloc(size);
 	if (!ptr)
-		diem("Cannot allocate %zu bytes", size);
+		fatal("Cannot allocate %zu bytes", size);
 
 	return ptr;
 }
@@ -44,7 +44,7 @@ void *xmalloc(size_t size) {
 void *xrealloc(void *ptr, size_t size) {
 	assert(size > 0 && ptr);
 	if (!(ptr = realloc(ptr, size)))
-		diem("Cannot reallocate %zu bytes", size);
+		fatal("Cannot reallocate %zu bytes", size);
 
 	return ptr;
 }
@@ -52,7 +52,7 @@ void *xrealloc(void *ptr, size_t size) {
 char *xstrdup(const char *str) {
 	assert(str);
 	if (!(str = strdup(str)))
-		diem("Insufficient memory for string allocation");
+		fatal("Insufficient memory for string allocation");
 
 	return (char*) str;
 }

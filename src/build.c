@@ -70,7 +70,7 @@ int build_target(const char *target) {
 	char *dep_file = get_dep_path(target);
 	if (remove(dep_file))
 		if (errno != ENOENT)
-			diem("redo: failed to remove %s", dep_file);
+			fatal("redo: failed to remove %s", dep_file);
 	free(dep_file);
 
 	char *temp_output = concat(2, target, ".redoing.tmp");
@@ -78,7 +78,7 @@ int build_target(const char *target) {
 	pid_t pid = fork();
 	if (pid == -1) {
 		/* failure */
-		diem("redo: failed to fork() new process");
+		fatal("redo: failed to fork() new process");
 	} else if (pid == 0) {
 		/* child */
 
@@ -86,7 +86,7 @@ int build_target(const char *target) {
 		char *dirc = xstrdup(target);
 		char *dtarget = dirname(dirc);
 		if (chdir(dtarget) == -1)
-			diem("redo: failed to change directory to %s", dtarget);
+			fatal("redo: failed to change directory to %s", dtarget);
 
 		free(dirc);
 
@@ -99,7 +99,7 @@ int build_target(const char *target) {
 
 		/* set "REDO_PARENT_TARGET" */
 		if (setenv("REDO_PARENT_TARGET", target, 1))
-			diem("redo: failed to setenv() REDO_PARENT_TARGET to %s", target);
+			fatal("redo: failed to setenv() REDO_PARENT_TARGET to %s", target);
 
 		/* excelp() has nearly everything we want: automatic parsing of the
 		   shebang line through execve() and fallback to /bin/sh if no valid
@@ -109,13 +109,13 @@ int build_target(const char *target) {
 		execv(argv[0], argv);
 
 		/* execv should never return */
-		diem("redo: failed to replace child process with %s", argv[0]);
+		fatal("redo: failed to replace child process with %s", argv[0]);
 	}
 
 	/* parent */
 	int status;
 	if (waitpid(pid, &status, 0) == -1)
-		diem("waitpid() failed: ");
+		fatal("waitpid() failed: ");
 	bool remove_temp = true;
 
 	if (WIFEXITED(status)) {
@@ -149,10 +149,10 @@ int build_target(const char *target) {
 	if (remove_temp) {
 		if (remove(temp_output))
 			if (errno != ENOENT)
-				diem("redo: failed to remove %s", temp_output);
+				fatal("redo: failed to remove %s", temp_output);
 	} else {
 		if (rename(temp_output, target))
-			diem("redo: failed to rename %s to %s", temp_output, target);
+			fatal("redo: failed to rename %s to %s", temp_output, target);
 
 		write_dep_hash(target);
 	}
@@ -168,13 +168,13 @@ int build_target(const char *target) {
 static char **parse_shebang(char *target, char *dofile, char *temp_output) {
 	FILE *fp = fopen(dofile, "rb");
 	if (!fp)
-		diem("redo: failed to open %s", dofile);
+		fatal("redo: failed to open %s", dofile);
 
 	char buf[1024];
 
 	buf[ fread(buf, 1, sizeof(buf)-1, fp) ] = '\0';
 	if (ferror(fp))
-		diem("redo: failed to read from %s", dofile);
+		fatal("redo: failed to read from %s", dofile);
 
 	fclose(fp);
 
@@ -286,7 +286,7 @@ static char *get_relpath(const char *target) {
 	char *abstarget = xrealpath(target);
 
 	if (!abstarget)
-		diem("redo: failed to get realpath() of %s", target);
+		fatal("redo: failed to get realpath() of %s", target);
 
 	char *relpath = xstrdup(make_relative(root, abstarget));
 	free(abstarget);
@@ -318,11 +318,11 @@ void add_dep(const char *target, const char *parent, int ident) {
 		if (errno == ENOENT) {
 			fp = fopen(dep_path, "w");
 			if (!fp)
-				diem("redo: failed to open %s", dep_path);
+				fatal("redo: failed to open %s", dep_path);
 			/* skip the first n bytes that are reserved for the header */
 			fseek(fp, HEADERSIZE, SEEK_SET);
 		} else {
-			diem("redo: failed to open %s", dep_path);
+			fatal("redo: failed to open %s", dep_path);
 		}
 	} else {
 		fseek(fp, 0L, SEEK_END);
@@ -335,10 +335,10 @@ void add_dep(const char *target, const char *parent, int ident) {
 	putc('\0', fp);
 
 	if (ferror(fp))
-		diem("redo: failed to write to %s", dep_path);
+		fatal("redo: failed to write to %s", dep_path);
 
 	if (fclose(fp))
-		diem("redo: failed to close %s", dep_path);
+		fatal("redo: failed to close %s", dep_path);
 	free(dep_path);
 	free(reltarget);
 }
@@ -347,7 +347,7 @@ void add_dep(const char *target, const char *parent, int ident) {
 static void hash_file(const char *target, unsigned char *hash) {
 	FILE *in = fopen(target, "rb");
 	if (!in)
-		diem("redo: failed to open %s", target);
+		fatal("redo: failed to open %s", target);
 
 	SHA_CTX context;
 	unsigned char data[8192];
@@ -358,7 +358,7 @@ static void hash_file(const char *target, unsigned char *hash) {
 		SHA1_Update(&context, data, read);
 
 	if (ferror(in))
-		diem("redo: failed to read from %s", target);
+		fatal("redo: failed to read from %s", target);
 	SHA1_Final(hash, &context);
 	fclose(in);
 }
@@ -373,16 +373,16 @@ static void write_dep_hash(const char *target) {
 	char *dep_path = get_dep_path(target);
 	int out = open(dep_path, O_WRONLY | O_CREAT, 0644);
 	if (out < 0)
-		diem("redo: failed to open %s", dep_path);
+		fatal("redo: failed to open %s", dep_path);
 
 	if (write(out, &magic, sizeof(unsigned)) < (ssize_t) sizeof(unsigned))
-		diem("redo: failed to write magic number to '%s'", dep_path);
+		fatal("redo: failed to write magic number to '%s'", dep_path);
 
 	if (write(out, hash, sizeof hash) < (ssize_t) sizeof hash)
-		diem("redo: failed to write hash to '%s'", dep_path);
+		fatal("redo: failed to write hash to '%s'", dep_path);
 
 	if (close(out))
-		diem("redo: failed to close %s", dep_path);
+		fatal("redo: failed to close %s", dep_path);
 	free(dep_path);
 }
 
@@ -427,14 +427,14 @@ static int handle_c(const char *target) {
 			free(dep_path);
 			return 1;
 		} else {
-			diem("redo: failed to open %s", dep_path);
+			fatal("redo: failed to open %s", dep_path);
 		}
 	}
 
 	char buf[8096 > FILENAME_MAX+3 ? 8096 : FILENAME_MAX*2];
 
 	if (fread(buf, 1, HEADERSIZE, fp) < HEADERSIZE)
-		diem("redo: failed to read %zu bytes from %s", HEADERSIZE, dep_path);
+		fatal("redo: failed to read %zu bytes from %s", HEADERSIZE, dep_path);
 
 	free(dep_path);
 
@@ -459,7 +459,7 @@ static int handle_c(const char *target) {
 
 		size_t read = fread(buf, 1, sizeof buf, fp);
 		if (ferror(fp))
-			diem("redo: failed to read %zu bytes from descriptor", sizeof buf);
+			fatal("redo: failed to read %zu bytes from descriptor", sizeof buf);
 
 		for (size_t i = 0; i < read; ++i) {
 			if (buf[i])
