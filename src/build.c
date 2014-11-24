@@ -28,6 +28,7 @@
 #include "dbg.h"
 
 #define HASHSIZE 20
+#define HEADERSIZE HASHSIZE + sizeof(unsigned int)
 
 static struct do_attr *get_dofiles(const char *target);
 static void free_do_attr(struct do_attr *thing);
@@ -134,11 +135,10 @@ void build_target(const char *target) {
 
 	/* depend on the do-file */
 	char *temp = get_dep_path(dofiles->chosen);
-	if (!fexists(temp)) {
+	if (!fexists(temp))
 		write_dep_hash(dofiles->chosen);
-	}
-	free(temp);
 
+	free(temp);
 	add_dep(dofiles->chosen, target, 'c');
 
 	/* redo-ifcreate on specific if general was chosen */
@@ -158,10 +158,12 @@ void build_target(const char *target) {
 
 	free(temp_output);
 	free_do_attr(dofiles);
+
+	return 1;
 }
 
 /* Read and parse shebang and return an argv-like pointer array containing the
-   arguments. If no valid shebang could be found, assume "/bin/sh -e" instead. */
+   arguments. If no valid shebang could be found assume "/bin/sh -e" instead. */
 static char **parse_shebang(char *target, char *dofile, char *temp_output) {
 	FILE *fp = fopen(dofile, "rb");
 	if (!fp)
@@ -195,38 +197,6 @@ static char **parse_shebang(char *target, char *dofile, char *temp_output) {
 	return argv;
 }
 
-/* Return a struct with all the possible do-files, and the chosen one. */
-static struct do_attr *get_dofiles(const char *target) {
-	struct do_attr *dofiles = xmalloc(sizeof(struct do_attr));
-
-	dofiles->specific = concat(2, target, ".do");
-	if (!is_absolute(target)) {
-		dofiles->general = concat(3, "default", take_extension(target), ".do");
-	} else {
-		char *dirc = xstrdup(target);
-		char *dt = dirname(dirc);
-
-		dofiles->general = concat(4, dt, "/default", take_extension(target), ".do");
-	}
-
-	if (fexists(dofiles->specific))
-		dofiles->chosen = dofiles->specific;
-	else if (fexists(dofiles->general))
-		dofiles->chosen = dofiles->general;
-	else
-		dofiles->chosen = NULL;
-
-	return dofiles;
-}
-
-/* Free the do_attr struct. */
-static void free_do_attr(struct do_attr *thing) {
-	assert(thing);
-	free(thing->specific);
-	free(thing->general);
-	free(thing);
-}
-
 /* Breaks cmd at spaces and stores a pointer to each argument in the returned
    array. The index i is incremented to point to the next free pointer. The
    returned array is guaranteed to have at least keep_free entries left. */
@@ -252,7 +222,6 @@ static char **parsecmd(char *cmd, size_t *i, size_t keep_free) {
 			/* check if we have enough space */
 			while (*i+keep_free >= argv_len) {
 				argv_len *= 2;
-				debug("Reallocating memory (now %zu elements)\n", argv_len);
 				argv = xrealloc(argv, argv_len * sizeof(char*));
 			}
 
@@ -261,6 +230,38 @@ static char **parsecmd(char *cmd, size_t *i, size_t keep_free) {
 			++*i;
 		}
 	}
+}
+
+/* Return a struct with all the possible do-files, and the chosen one. */
+static struct do_attr *get_dofiles(const char *target) {
+	struct do_attr *dofiles = xmalloc(sizeof(struct do_attr));
+
+	dofiles->specific = concat(2, target, ".do");
+	if (!is_absolute(target)) {
+		dofiles->general = concat(3, "default", take_extension(target), ".do");
+	} else {
+		char *dirc = xstrdup(target);
+		char *dt = dirname(dirc);
+
+		dofiles->general = concat(4, dt, "/default", take_extension(target), ".do");
+		free(dirc);
+	}
+
+	if (fexists(dofiles->specific))
+		dofiles->chosen = dofiles->specific;
+	else if (fexists(dofiles->general))
+		dofiles->chosen = dofiles->general;
+	else
+		dofiles->chosen = NULL;
+
+	return dofiles;
+}
+
+/* Free the do_attr struct. */
+static void free_do_attr(struct do_attr *thing) {
+	free(thing->specific);
+	free(thing->general);
+	free(thing);
 }
 
 /* Custom version of realpath that doesn't fail if the last part of path
@@ -280,8 +281,6 @@ static char *xrealpath(const char *path) {
 
 /* Return the relative path against "REDO_ROOT" of target. */
 static char *get_relpath(const char *target) {
-	assert(getenv("REDO_ROOT"));
-
 	char *root = getenv("REDO_ROOT");
 	char *abstarget = xrealpath(target);
 
@@ -295,8 +294,6 @@ static char *get_relpath(const char *target) {
 
 /* Return the dependency file path of target. */
 static char *get_dep_path(const char *target) {
-	assert(getenv("REDO_ROOT"));
-
 	char *root = getenv("REDO_ROOT");
 	char *reltarget = get_relpath(target);
 	char *xtarget = transform_path(reltarget);
@@ -310,10 +307,8 @@ static char *get_dep_path(const char *target) {
 /* Add the dependency target, with the identifier ident. If parent is NULL, the
  * value of the environment variable REDO_PARENT will be taken instead. */
 void add_dep(const char *target, const char *parent, int ident) {
-	if (!parent) {
-		assert(getenv("REDO_PARENT_TARGET"));
+	if (!parent)
 		parent = getenv("REDO_PARENT_TARGET");
-	}
 
 	char *dep_path = get_dep_path(parent);
 
@@ -323,8 +318,8 @@ void add_dep(const char *target, const char *parent, int ident) {
 			fp = fopen(dep_path, "w");
 			if (!fp)
 				diem("redo: failed to open %s", dep_path);
-			/* skip the first n bytes that are reserved for the hash + magic number */
-			fseek(fp, HASHSIZE + sizeof(unsigned int), SEEK_SET);
+			/* skip the first n bytes that are reserved for the header */
+			fseek(fp, HEADERSIZE, SEEK_SET);
 		} else {
 			diem("redo: failed to open %s", dep_path);
 		}
@@ -369,8 +364,6 @@ static void hash_file(const char *target, unsigned char *hash) {
 
 /* Calculate and store the hash of target in the right dependency file. */
 static void write_dep_hash(const char *target) {
-	assert(getenv("REDO_MAGIC"));
-
 	unsigned char hash[HASHSIZE];
 	unsigned magic = atoi(getenv("REDO_MAGIC"));
 
