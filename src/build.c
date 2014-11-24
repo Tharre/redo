@@ -37,6 +37,7 @@ static char **parsecmd(char *cmd, size_t *i, size_t keep_free);
 static char *get_relpath(const char *target);
 static char *get_dep_path(const char *target);
 static void write_dep_hash(const char *target);
+static int handle_c(const char *target);
 
 struct do_attr {
 	char *specific;
@@ -46,7 +47,7 @@ struct do_attr {
 
 
 /* Build given target, using it's do-file. */
-void build_target(const char *target) {
+int build_target(const char *target) {
 	/* get the do-file which we are going to execute */
 	struct do_attr *dofiles = get_dofiles(target);
 	if (!dofiles->chosen) {
@@ -55,7 +56,7 @@ void build_target(const char *target) {
 			   then we treat it as a source */
 			write_dep_hash(target);
 			free_do_attr(dofiles);
-			return;
+			return 1;
 		}
 
 		die("%s couldn't be built as no suitable do-file exists\n", target);
@@ -393,95 +394,108 @@ int update_target(const char *target, int ident) {
 		return 1;
 	case 'e':
 		if (fexists(target)) {
-			debug("%s is not up-to-date: target exist and e ident was chosen\n", target);
+			debug("%s is not up-to-date: target exist and e ident was chosen\n",
+			      target);
 			build_target(target);
 			return 1;
 		}
 		return 0;
 	case 'c':
-#define HEADERSIZE HASHSIZE + sizeof(unsigned)
-		if (!fexists(target)) {
-			/* target does not exist */
-			debug("%s is not up-to-date: target doesn't exist\n", target);
-			build_target(target);
-			return 1;
-		}
-
-		char *dep_path = get_dep_path(target);
-
-		FILE *fp = fopen(dep_path, "rb");
-		if (!fp) {
-			if (errno == ENOENT) {
-				/* dependency file does not exist */
-				debug("%s is not up-to-date: dependency file (%s) doesn't exist\n",
-				      target, dep_path);
-				build_target(target);
-				return 1;
-			} else {
-				diem("redo: failed to open %s", dep_path);
-			}
-		}
-
-		char buf[8096];
-		if (fread(buf, 1, HEADERSIZE, fp) < HEADERSIZE)
-			diem("redo: failed to read %zu bytes from %s", HEADERSIZE, dep_path);
-
-		free(dep_path);
-
-		if (*(unsigned *) buf == (unsigned) atoi(getenv("REDO_MAGIC")))
-			/* magic number matches */
-			return 1;
-
-		char *root = getenv("REDO_ROOT");
-		bool rebuild = false;
-		unsigned char hash[HASHSIZE];
-		hash_file(target, hash);
-		if (memcmp(hash, buf+sizeof(unsigned), HASHSIZE)) {
-			debug("%s is not-up-to-date: hashes don't match\n", target);
-			build_target(target);
-			return 1;
-		}
-
-		/* FIXME: this doesn't work properly if we actually read beyond 8096 bytes */
-		while (!feof(fp)) {
-			size_t read = fread(buf, 1, sizeof buf, fp);
-
-			if (ferror(fp))
-				diem("redo: failed to read %zu bytes from file descriptor", sizeof buf);
-
-			char *ptr = buf;
-			for (size_t i = 0; i < read; ++i) {
-				if (buf[i])
-					continue;
-				if (!is_absolute(&ptr[1])) {
-					/* if our path is relative we need to prefix it with the
-					   root project directory or the path will be invalid */
-					char *abs = concat(3, root, "/", &ptr[1]);
-					if (update_target(abs, ptr[0])) {
-						debug("%s is not up-to-date: subdependency %s is out-of-date\n",
-						      target, abs);
-						rebuild = true;
-					}
-					free(abs);
-				} else {
-					if (update_target(&ptr[1], ptr[0])) {
-						debug("%s is not up-to-date: subdependency %s is out-of-date\n",
-						      target, &ptr[1]);
-						rebuild = true;
-					}
-				}
-				ptr = &buf[i+1];
-			}
-		}
-
-		fclose(fp);
-		if (rebuild) {
-			build_target(target);
-			return 1;
-		}
-		return 0;
-
+		return handle_c(target);
 	default:
-		die("redo: unknown identiier '%c'\n", ident);
+		die("redo: unknown identifier '%c'\n", ident);
 	}
+}
+
+static int handle_c(const char *target) {
+	if (!fexists(target)) {
+		/* target does not exist */
+		debug("%s is not up-to-date: target doesn't exist\n", target);
+		build_target(target);
+		return 1;
+	}
+
+	char *dep_path = get_dep_path(target);
+
+	FILE *fp = fopen(dep_path, "rb");
+	if (!fp) {
+		if (errno == ENOENT) {
+			/* dependency file does not exist */
+			debug("%s is not up-to-date: dependency file (%s) doesn't exist\n",
+			      target, dep_path);
+			build_target(target);
+			free(dep_path);
+			return 1;
+		} else {
+			diem("redo: failed to open %s", dep_path);
+		}
+	}
+
+	char buf[8096 > FILENAME_MAX+3 ? 8096 : FILENAME_MAX*2];
+
+	if (fread(buf, 1, HEADERSIZE, fp) < HEADERSIZE)
+		diem("redo: failed to read %zu bytes from %s", HEADERSIZE, dep_path);
+
+	free(dep_path);
+
+	if (*(unsigned *) buf == (unsigned) atoi(getenv("REDO_MAGIC")))
+		/* magic number matches */
+		return 1;
+
+	char *root = getenv("REDO_ROOT");
+	bool rebuild = false;
+	unsigned char hash[HASHSIZE];
+	hash_file(target, hash);
+	if (memcmp(hash, buf+sizeof(unsigned), HASHSIZE)) {
+		debug("%s is not-up-to-date: hashes don't match\n", target);
+		build_target(target);
+		return 1;
+	}
+
+	char *ptr;
+
+	while (!feof(fp)) {
+		ptr = buf;
+
+		size_t read = fread(buf, 1, sizeof buf, fp);
+		if (ferror(fp))
+			diem("redo: failed to read %zu bytes from descriptor", sizeof buf);
+
+		for (size_t i = 0; i < read; ++i) {
+			if (buf[i])
+				continue;
+			if (!is_absolute(&ptr[1])) {
+				/* if our path is relative we need to prefix it with the
+				   root project directory or the path will be invalid */
+				char *abs = concat(3, root, "/", &ptr[1]);
+				if (update_target(abs, ptr[0])) {
+					debug("%s is not up-to-date: subdependency %s is out-of-date\n",
+						  target, abs);
+					rebuild = true;
+				}
+				free(abs);
+			} else {
+				if (update_target(&ptr[1], ptr[0])) {
+					debug("%s is not up-to-date: subdependency %s is out-of-date\n",
+						  target, &ptr[1]);
+					rebuild = true;
+				}
+			}
+			ptr = &buf[i+1];
+		}
+
+		if (read && buf[read-1]) {
+			if (buf != ptr)
+				memmove(buf, ptr, buf-ptr + sizeof buf);
+			else
+				die("redo: dependency file contains insanely long paths\n");
+		}
+	}
+
+	fclose(fp);
+	if (rebuild) {
+		build_target(target);
+		return 1;
+	}
+	return 0;
 }

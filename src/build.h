@@ -13,6 +13,6 @@
 
 extern void add_dep(const char *target, const char *parent, int ident);
 extern int update_target(const char *target, int ident);
-extern void build_target(const char *target);
+extern int build_target(const char *target);
 
 #endif
