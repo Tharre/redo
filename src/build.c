@@ -76,7 +76,7 @@ int build_target(const char *target) {
 			fatal("redo: failed to open %s\n", dep_file);
 		memset(old_hash, 0, HASHSIZE); // FIXME
 	} else {
-		if (!fseek(fp, sizeof(unsigned), SEEK_SET))
+		if (fseek(fp, sizeof(unsigned), SEEK_SET))
 			fatal("redo: fseek() failed");
 		if (fread(old_hash, 1, HASHSIZE, fp) < HASHSIZE)
 			fatal("redo: failed to read stuff");
