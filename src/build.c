@@ -36,7 +36,7 @@ static char **parse_shebang(char *target, char *dofile, char *temp_output);
 static char **parsecmd(char *cmd, size_t *i, size_t keep_free);
 static char *get_relpath(const char *target);
 static char *get_dep_path(const char *target);
-static void write_dep_hash(const char *target);
+static int write_dep_hash(const char *target, unsigned char *old_hash);
 static int handle_c(const char *target);
 
 struct do_attr {
@@ -48,15 +48,16 @@ struct do_attr {
 
 /* Build given target, using it's do-file. */
 int build_target(const char *target) {
+	int retval = 1;
 	/* get the do-file which we are going to execute */
 	struct do_attr *dofiles = get_dofiles(target);
 	if (!dofiles->chosen) {
 		if (fexists(target)) {
 			/* if our target file has no do file associated but exists,
 			   then we treat it as a source */
-			write_dep_hash(target);
+			write_dep_hash(target, NULL);
 			free_do_attr(dofiles);
-			return 1;
+			return retval;
 		}
 
 		die("%s couldn't be built as no suitable do-file exists\n", target);
@@ -66,8 +67,23 @@ int build_target(const char *target) {
 	printf("redo  %s\n", reltarget);
 	free(reltarget);
 
-	/* remove old dependency file */
+	/* get the old hash (if any) */
+	unsigned char old_hash[HASHSIZE];
 	char *dep_file = get_dep_path(target);
+	FILE *fp = fopen(dep_file, "rb");
+	if (!fp) {
+		if (errno != ENOENT)
+			fatal("redo: failed to open %s\n", dep_file);
+		memset(old_hash, 0, HASHSIZE); // FIXME
+	} else {
+		if (!fseek(fp, sizeof(unsigned), SEEK_SET))
+			fatal("redo: fseek() failed");
+		if (fread(old_hash, 1, HASHSIZE, fp) < HASHSIZE)
+			fatal("redo: failed to read stuff");
+		fclose(fp);
+	}
+
+	/* remove old dependency file */
 	if (remove(dep_file))
 		if (errno != ENOENT)
 			fatal("redo: failed to remove %s", dep_file);
@@ -118,26 +134,32 @@ int build_target(const char *target) {
 		fatal("waitpid() failed: ");
 	bool remove_temp = true;
 
+	/* check how our child exited */
 	if (WIFEXITED(status)) {
-		if (WEXITSTATUS(status)) {
+		if (WEXITSTATUS(status))
 			die("redo: invoked do-file %s failed: %d\n", dofiles->chosen,
 			    WEXITSTATUS(status));
-		} else {
-			/* successful */
-
-			/* if the file is 0 bytes long we delete it */
-			if (fsize(temp_output) > 0)
-				remove_temp = false;
-		}
 	} else {
 		/* something very wrong happened with the child */
 		die("redo: invoked do-file did not terminate correctly\n");
 	}
 
+	/* check if our output file is > 0 bytes long */
+	if (fsize(temp_output) > 0) {
+		if (rename(temp_output, target))
+			fatal("redo: failed to rename %s to %s", temp_output, target);
+
+		retval = write_dep_hash(target, old_hash);
+	} else {
+		if (remove(temp_output))
+			if (errno != ENOENT)
+				fatal("redo: failed to remove %s", temp_output);
+	}
+
 	/* depend on the do-file */
 	char *temp = get_dep_path(dofiles->chosen);
 	if (!fexists(temp))
-		write_dep_hash(dofiles->chosen);
+		write_dep_hash(dofiles->chosen, NULL);
 
 	free(temp);
 	add_dep(dofiles->chosen, target, 'c');
@@ -146,21 +168,10 @@ int build_target(const char *target) {
 	if (dofiles->general == dofiles->chosen)
 		add_dep(dofiles->specific, target, 'e');
 
-	if (remove_temp) {
-		if (remove(temp_output))
-			if (errno != ENOENT)
-				fatal("redo: failed to remove %s", temp_output);
-	} else {
-		if (rename(temp_output, target))
-			fatal("redo: failed to rename %s to %s", temp_output, target);
-
-		write_dep_hash(target);
-	}
-
 	free(temp_output);
 	free_do_attr(dofiles);
 
-	return 1;
+	return retval;
 }
 
 /* Read and parse shebang and return an argv-like pointer array containing the
@@ -257,7 +268,6 @@ static struct do_attr *get_dofiles(const char *target) {
 
 	return dofiles;
 }
-
 /* Free the do_attr struct. */
 static void free_do_attr(struct do_attr *thing) {
 	free(thing->specific);
@@ -363,14 +373,16 @@ static void hash_file(const char *target, unsigned char *hash) {
 	fclose(in);
 }
 
-/* Calculate and store the hash of target in the right dependency file. */
-static void write_dep_hash(const char *target) {
+/* Calculate and store the hash of target in the right dependency file. Returns
+   a nonzero value if the hash changed or zero otherwise. */
+static int write_dep_hash(const char *target, unsigned char *old_hash) {
 	unsigned char hash[HASHSIZE];
 	unsigned magic = atoi(getenv("REDO_MAGIC"));
 
 	hash_file(target, hash);
 
 	char *dep_path = get_dep_path(target);
+
 	int out = open(dep_path, O_WRONLY | O_CREAT, 0644);
 	if (out < 0)
 		fatal("redo: failed to open %s", dep_path);
@@ -383,22 +395,24 @@ static void write_dep_hash(const char *target) {
 
 	if (close(out))
 		fatal("redo: failed to close %s", dep_path);
+
 	free(dep_path);
+
+	if (old_hash)
+		return memcmp(hash, old_hash, HASHSIZE);
+	else
+		return 1;
+
 }
 
 int update_target(const char *target, int ident) {
 	switch(ident) {
 	case 'a':
-		debug("%s is not up-to-date: always rebuild\n", target);
-		build_target(target);
-		return 1;
+		return build_target(target);
 	case 'e':
-		if (fexists(target)) {
-			debug("%s is not up-to-date: target exist and e ident was chosen\n",
-			      target);
-			build_target(target);
-			return 1;
-		}
+		if (fexists(target))
+			return build_target(target);
+
 		return 0;
 	case 'c':
 		return handle_c(target);
@@ -408,12 +422,8 @@ int update_target(const char *target, int ident) {
 }
 
 static int handle_c(const char *target) {
-	if (!fexists(target)) {
-		/* target does not exist */
-		debug("%s is not up-to-date: target doesn't exist\n", target);
-		build_target(target);
-		return 1;
-	}
+	if (!fexists(target))
+		return build_target(target);
 
 	char *dep_path = get_dep_path(target);
 
@@ -421,11 +431,8 @@ static int handle_c(const char *target) {
 	if (!fp) {
 		if (errno == ENOENT) {
 			/* dependency file does not exist */
-			debug("%s is not up-to-date: dependency file (%s) doesn't exist\n",
-			      target, dep_path);
-			build_target(target);
 			free(dep_path);
-			return 1;
+			return build_target(target);
 		} else {
 			fatal("redo: failed to open %s", dep_path);
 		}
@@ -446,11 +453,8 @@ static int handle_c(const char *target) {
 	bool rebuild = false;
 	unsigned char hash[HASHSIZE];
 	hash_file(target, hash);
-	if (memcmp(hash, buf+sizeof(unsigned), HASHSIZE)) {
-		debug("%s is not-up-to-date: hashes don't match\n", target);
-		build_target(target);
-		return 1;
-	}
+	if (memcmp(hash, buf+sizeof(unsigned), HASHSIZE))
+		return build_target(target);
 
 	char *ptr;
 
@@ -468,18 +472,13 @@ static int handle_c(const char *target) {
 				/* if our path is relative we need to prefix it with the
 				   root project directory or the path will be invalid */
 				char *abs = concat(3, root, "/", &ptr[1]);
-				if (update_target(abs, ptr[0])) {
-					debug("%s is not up-to-date: subdependency %s is out-of-date\n",
-						  target, abs);
+				if (update_target(abs, ptr[0]))
 					rebuild = true;
-				}
+
 				free(abs);
 			} else {
-				if (update_target(&ptr[1], ptr[0])) {
-					debug("%s is not up-to-date: subdependency %s is out-of-date\n",
-						  target, &ptr[1]);
+				if (update_target(&ptr[1], ptr[0]))
 					rebuild = true;
-				}
 			}
 			ptr = &buf[i+1];
 		}
@@ -493,9 +492,8 @@ static int handle_c(const char *target) {
 	}
 
 	fclose(fp);
-	if (rebuild) {
-		build_target(target);
-		return 1;
-	}
+	if (rebuild)
+		return build_target(target);
+
 	return 0;
 }
