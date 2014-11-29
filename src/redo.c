@@ -53,8 +53,9 @@ void prepare_env() {
 
 int main(int argc, char *argv[]) {
 	prepare_env();
+	char *argv_base = xbasename(argv[0]);
 
-	if (!strcmp(argv[0], "redo")) {
+	if (!strcmp(argv_base, "redo")) {
 		if (argc < 2) {
 			update_target("all", 'a');
 		} else {
@@ -64,14 +65,14 @@ int main(int argc, char *argv[]) {
 		return EXIT_SUCCESS;
 	} else {
 		char ident;
-		if      (!strcmp(argv[0], "redo-ifchange"))
+		if      (!strcmp(argv_base, "redo-ifchange"))
 			ident = 'c';
-		else if (!strcmp(argv[0], "redo-ifcreate"))
+		else if (!strcmp(argv_base, "redo-ifcreate"))
 			ident = 'e';
-		else if (!strcmp(argv[0], "redo-always"))
+		else if (!strcmp(argv_base, "redo-always"))
 			ident = 'a';
 		else
-			die("argv set to unkown value\n");
+			die("redo: argv set to unkown value\n");
 
 		for (int i = 1; i < argc; ++i) {
 			update_target(argv[i], ident);
