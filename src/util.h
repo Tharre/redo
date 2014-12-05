@@ -11,10 +11,7 @@
 
 #include <stddef.h>
 
-#define DIE_HELPER(M, ...) die(M ": %s\n", __VA_ARGS__)
-#define fatal(...) DIE_HELPER(__VA_ARGS__, strerror(errno))
-
-extern void __attribute__((noreturn)) die(const char *err, ...);
+extern void __attribute__((noreturn)) die_(const char *err, ...);
 extern void *xmalloc(size_t size);
 extern void *xrealloc(void *ptr, size_t size);
 extern char *xstrdup(const char *str);

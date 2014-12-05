@@ -21,15 +21,24 @@
 
 /* helper functions which help in replacing the GNU extension ##__VA_ARGS__ */
 #define STRINGIFY(x) #x
-#define LOG_HELPER(f,l,...) fprintf(stderr, "("f":"STRINGIFY(l)"): "__VA_ARGS__)
+#define PREFIX(...) PREFIX_HELPER(_FILENAME, __LINE__, __VA_ARGS__)
+#define SUFFIX(S, M, ...) M S, __VA_ARGS__
+
+#define log_err(...) fprintf(stderr, PREFIX(__VA_ARGS__))
+#define die(...) die_(PREFIX(__VA_ARGS__))
+#define fatal(...) die(SUFFIX(": %s\n", __VA_ARGS__, strerror(errno)))
+
+#ifdef NDEBUG
+#define PREFIX_HELPER(f,l,...) __VA_ARGS__
+#else
+#define PREFIX_HELPER(f,l,...) "(" f ":" STRINGIFY(l) "): " __VA_ARGS__
+#endif
 
 #ifdef NDEBUG
 #define debug(...)
 #else
 #define debug(...) log_err(__VA_ARGS__)
 #endif
-
-#define log_err(...) LOG_HELPER(_FILENAME, __LINE__, __VA_ARGS__)
 
 #define assert_str_equal(a,b) ({ \
 	if (strcmp(a, b)) { \
