@@ -1,25 +1,29 @@
-/*
- * Secure Hash Algorith SHA-1, as published in FIPS PUB 180-2.
- *
- * This implementation is in the public domain.  Copyright abandoned.
- * You may do anything you like with it, including evil things.
- *
- * This is a rewrite from scratch, based on Linus Torvalds' "block-sha1"
- * from the git mailing list (August, 2009).  Additional optimization
- * ideas cribbed from
- * - Artur Skawina (x86, particularly P4, and much benchmarking)
- * - Nicolas Pitre (ARM)
- */
+/* public api for steve reid's public domain SHA-1 implementation */
+/* this file is in the public domain */
 
-#include <stddef.h>	/* For size_t */
-#include <stdint.h>	/* For uint32_t, uint64_t */
+#ifndef __SHA1_H
+#define __SHA1_H
 
-typedef struct SHA_context {
-        uint64_t len;	/* May be shrunk to uint32_t */
-        uint32_t iv[5];
-        unsigned char buf[64];	/* Must be 32-bit aligned */
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#include <stdint.h>
+
+typedef struct {
+    uint32_t state[5];
+    uint32_t count[2];
+    uint8_t  buffer[64];
 } SHA_CTX;
 
-void SHA1_Init(struct SHA_context *c);
-void SHA1_Update(struct SHA_context *c, void const *p, size_t n);
-void SHA1_Final(unsigned char hash[20], struct SHA_context *c);
+#define SHA1_DIGEST_SIZE 20
+
+void SHA1_Init(SHA_CTX* context);
+void SHA1_Update(SHA_CTX* context, const uint8_t* data, const size_t len);
+void SHA1_Final(uint8_t digest[SHA1_DIGEST_SIZE], SHA_CTX* context);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* __SHA1_H */
