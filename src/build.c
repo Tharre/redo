@@ -40,6 +40,8 @@ typedef struct dep_info {
 	char *path;
 	unsigned int magic;
 	unsigned char hash[20];
+	int32_t flags;
+#define DEP_SOURCE (1 << 1)
 } dep_info;
 
 static do_attr *get_dofiles(const char *target);
@@ -60,6 +62,7 @@ int build_target(const char *target) {
 
 	dep.path = get_dep_path(target);
 	dep.magic = atoi(getenv("REDO_MAGIC"));
+	dep.flags = 0;
 
 	/* get the do-file which we are going to execute */
 	do_attr *dofiles = get_dofiles(target);
@@ -67,6 +70,7 @@ int build_target(const char *target) {
 		if (fexists(target)) {
 			/* if our target file has no do file associated but exists,
 			   then we treat it as a source */
+			dep.flags |= DEP_SOURCE;
 			hash_file(target, dep.hash);
 			write_dep_info(&dep);
 			goto exit;
@@ -173,6 +177,7 @@ int build_target(const char *target) {
 	free(dep.path);
 
 	/* depend on the do-file */
+	dep.flags = 0;
 	dep.path = get_dep_path(dofiles->chosen);
 	if (!fexists(dep.path)) {
 		hash_file(dofiles->chosen, dep.hash);
@@ -422,9 +427,6 @@ int update_target(const char *target, int ident) {
 }
 
 static int handle_c(const char *target) {
-	if (!fexists(target))
-		return build_target(target);
-
 	char *dep_path = get_dep_path(target);
 
 	FILE *fp = fopen(dep_path, "rb");
@@ -446,6 +448,15 @@ static int handle_c(const char *target) {
 	free(dep_path);
 
 	dep_info *dep = (dep_info*) (buf-offsetof(dep_info, magic));
+
+	if (!fexists(target)) {
+		if (dep->flags & DEP_SOURCE)
+			/* target is a source and must not be rebuild */
+			return 1;
+		else
+			return build_target(target);
+	}
+
 	if (dep->magic == (unsigned) atoi(getenv("REDO_MAGIC")))
 		/* magic number matches */
 		return 1;
