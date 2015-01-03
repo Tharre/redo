@@ -1,3 +1,5 @@
+config.local
+
 # ignore output
 out/*.o
 out/redo

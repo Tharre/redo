@@ -1,5 +1,10 @@
 #!/bin/sh -ex
 
+export SH_BUILD=1
+
+if [ -f "./config.local" ]; then
+	. ./config.local
+fi
 . out/config.sh
 $CC $CFLAGS -o out/util.o -c src/util.c
 $CC $CFLAGS -o out/build.o -c src/build.c
