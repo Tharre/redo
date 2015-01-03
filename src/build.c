@@ -27,37 +27,49 @@
 #define _FILENAME "build.c"
 #include "dbg.h"
 
-#define HASHSIZE 20
-#define HEADERSIZE HASHSIZE + sizeof(unsigned int)
+#define HASHSIZE sizeof(((dep_info*)0)->hash)
+#define HEADERSIZE (sizeof(dep_info)-offsetof(dep_info, magic))
 
-static struct do_attr *get_dofiles(const char *target);
-static void free_do_attr(struct do_attr *thing);
+typedef struct do_attr {
+	char *specific;
+	char *general;
+	char *chosen;
+} do_attr;
+
+typedef struct dep_info {
+	char *path;
+	unsigned int magic;
+	unsigned char hash[20];
+} dep_info;
+
+static do_attr *get_dofiles(const char *target);
+static void free_do_attr(do_attr *thing);
 static char **parse_shebang(char *target, char *dofile, char *temp_output);
 static char **parsecmd(char *cmd, size_t *i, size_t keep_free);
 static char *get_relpath(const char *target);
 static char *get_dep_path(const char *target);
-static int write_dep_hash(const char *target, unsigned char *old_hash);
+static void write_dep_info(dep_info *dep);
 static int handle_c(const char *target);
-
-struct do_attr {
-	char *specific;
-	char *general;
-	char *chosen;
-};
+static void hash_file(const char *target, unsigned char *hash);
 
 
 /* Build given target, using it's do-file. */
 int build_target(const char *target) {
+	dep_info dep;
 	int retval = 1;
+
+	dep.path = get_dep_path(target);
+	dep.magic = atoi(getenv("REDO_MAGIC"));
+
 	/* get the do-file which we are going to execute */
-	struct do_attr *dofiles = get_dofiles(target);
+	do_attr *dofiles = get_dofiles(target);
 	if (!dofiles->chosen) {
 		if (fexists(target)) {
 			/* if our target file has no do file associated but exists,
 			   then we treat it as a source */
-			write_dep_hash(target, NULL);
-			free_do_attr(dofiles);
-			return retval;
+			hash_file(target, dep.hash);
+			write_dep_info(&dep);
+			goto exit;
 		}
 
 		die("%s couldn't be built as no suitable do-file exists\n", target);
@@ -68,26 +80,23 @@ int build_target(const char *target) {
 	free(reltarget);
 
 	/* get the old hash (if any) */
-	unsigned char old_hash[HASHSIZE];
-	char *dep_file = get_dep_path(target);
-	FILE *fp = fopen(dep_file, "rb");
+	FILE *fp = fopen(dep.path, "rb");
 	if (!fp) {
 		if (errno != ENOENT)
-			fatal("redo: failed to open %s\n", dep_file);
-		memset(old_hash, 0, HASHSIZE); // FIXME
+			fatal("redo: failed to open %s\n", dep.path);
+		memset(dep.hash, 0, HASHSIZE); // FIXME
 	} else {
 		if (fseek(fp, sizeof(unsigned), SEEK_SET))
 			fatal("redo: fseek() failed");
-		if (fread(old_hash, 1, HASHSIZE, fp) < HASHSIZE)
+		if (fread(dep.hash, 1, HASHSIZE, fp) < HASHSIZE)
 			fatal("redo: failed to read stuff");
 		fclose(fp);
 	}
 
 	/* remove old dependency file */
-	if (remove(dep_file))
+	if (remove(dep.path))
 		if (errno != ENOENT)
-			fatal("redo: failed to remove %s", dep_file);
-	free(dep_file);
+			fatal("redo: failed to remove %s", dep.path);
 
 	char *temp_output = concat(2, target, ".redoing.tmp");
 
@@ -132,7 +141,6 @@ int build_target(const char *target) {
 	int status;
 	if (waitpid(pid, &status, 0) == -1)
 		fatal("waitpid() failed: ");
-	bool remove_temp = true;
 
 	/* check how our child exited */
 	if (WIFEXITED(status)) {
@@ -149,19 +157,27 @@ int build_target(const char *target) {
 		if (rename(temp_output, target))
 			fatal("redo: failed to rename %s to %s", temp_output, target);
 
-		retval = write_dep_hash(target, old_hash);
+		unsigned char new_hash[20];
+		hash_file(target, new_hash);
+		retval = memcmp(new_hash, dep.hash, HASHSIZE);
+		if (retval)
+			memcpy(dep.hash, new_hash, HASHSIZE);
+
+		write_dep_info(&dep);
 	} else {
 		if (remove(temp_output))
 			if (errno != ENOENT)
 				fatal("redo: failed to remove %s", temp_output);
 	}
 
-	/* depend on the do-file */
-	char *temp = get_dep_path(dofiles->chosen);
-	if (!fexists(temp))
-		write_dep_hash(dofiles->chosen, NULL);
+	free(dep.path);
 
-	free(temp);
+	/* depend on the do-file */
+	dep.path = get_dep_path(dofiles->chosen);
+	if (!fexists(dep.path)) {
+		hash_file(dofiles->chosen, dep.hash);
+		write_dep_info(&dep);
+	}
 	add_dep(dofiles->chosen, target, 'c');
 
 	/* redo-ifcreate on specific if general was chosen */
@@ -169,6 +185,8 @@ int build_target(const char *target) {
 		add_dep(dofiles->specific, target, 'e');
 
 	free(temp_output);
+exit:
+	free(dep.path);
 	free_do_attr(dofiles);
 
 	return retval;
@@ -245,8 +263,8 @@ static char **parsecmd(char *cmd, size_t *i, size_t keep_free) {
 }
 
 /* Return a struct with all the possible do-files, and the chosen one. */
-static struct do_attr *get_dofiles(const char *target) {
-	struct do_attr *dofiles = xmalloc(sizeof(struct do_attr));
+static do_attr *get_dofiles(const char *target) {
+	do_attr *dofiles = xmalloc(sizeof(do_attr));
 
 	dofiles->specific = concat(2, target, ".do");
 	if (!is_absolute(target)) {
@@ -268,8 +286,9 @@ static struct do_attr *get_dofiles(const char *target) {
 
 	return dofiles;
 }
+
 /* Free the do_attr struct. */
-static void free_do_attr(struct do_attr *thing) {
+static void free_do_attr(do_attr *thing) {
 	free(thing->specific);
 	free(thing->general);
 	free(thing);
@@ -373,36 +392,17 @@ static void hash_file(const char *target, unsigned char *hash) {
 	fclose(in);
 }
 
-/* Calculate and store the hash of target in the right dependency file. Returns
-   a nonzero value if the hash changed or zero otherwise. */
-static int write_dep_hash(const char *target, unsigned char *old_hash) {
-	unsigned char hash[HASHSIZE];
-	unsigned magic = atoi(getenv("REDO_MAGIC"));
-
-	hash_file(target, hash);
-
-	char *dep_path = get_dep_path(target);
-
-	int out = open(dep_path, O_WRONLY | O_CREAT, 0644);
+/* Write the dependency information into the specified path. */
+static void write_dep_info(dep_info *dep) {
+	int out = open(dep->path, O_WRONLY | O_CREAT, 0644);
 	if (out < 0)
-		fatal("redo: failed to open %s", dep_path);
+		fatal("redo: failed to open %s", dep->path);
 
-	if (write(out, &magic, sizeof(unsigned)) < (ssize_t) sizeof(unsigned))
-		fatal("redo: failed to write magic number to '%s'", dep_path);
-
-	if (write(out, hash, sizeof hash) < (ssize_t) sizeof hash)
-		fatal("redo: failed to write hash to '%s'", dep_path);
+	if (write(out, &dep->magic, HEADERSIZE) < (ssize_t) HEADERSIZE)
+		fatal("redo: failed to write dependency info to '%s'", dep->path);
 
 	if (close(out))
-		fatal("redo: failed to close %s", dep_path);
-
-	free(dep_path);
-
-	if (old_hash)
-		return memcmp(hash, old_hash, HASHSIZE);
-	else
-		return 1;
-
+		fatal("redo: failed to close %s", dep->path);
 }
 
 int update_target(const char *target, int ident) {
@@ -445,18 +445,19 @@ static int handle_c(const char *target) {
 
 	free(dep_path);
 
-	if (*(unsigned *) buf == (unsigned) atoi(getenv("REDO_MAGIC")))
+	dep_info *dep = (dep_info*) (buf-offsetof(dep_info, magic));
+	if (dep->magic == (unsigned) atoi(getenv("REDO_MAGIC")))
 		/* magic number matches */
 		return 1;
 
-	char *root = getenv("REDO_ROOT");
 	bool rebuild = false;
 	unsigned char hash[HASHSIZE];
 	hash_file(target, hash);
-	if (memcmp(hash, buf+sizeof(unsigned), HASHSIZE))
+	if (memcmp(hash, dep->hash, HASHSIZE))
 		return build_target(target);
 
 	char *ptr;
+	char *root = getenv("REDO_ROOT");
 
 	while (!feof(fp)) {
 		ptr = buf;
