@@ -52,18 +52,19 @@ void prepare_env() {
 }
 
 int main(int argc, char *argv[]) {
-	prepare_env();
 	char *argv_base = xbasename(argv[0]);
 
 	if (!strcmp(argv_base, "redo")) {
+		prepare_env();
 		if (argc < 2) {
 			update_target("all", 'a');
 		} else {
 			for (int i = 1; i < argc; ++i)
 				update_target(argv[i], 'a');
 		}
-		return EXIT_SUCCESS;
 	} else {
+		char *parent = getenv("REDO_PARENT_TARGET");
+
 		char ident;
 		if      (!strcmp(argv_base, "redo-ifchange"))
 			ident = 'c';
@@ -74,11 +75,17 @@ int main(int argc, char *argv[]) {
 		else
 			die("redo: argv set to unkown value\n");
 
-		for (int i = 1; i < argc; ++i) {
-			update_target(argv[i], ident);
-			add_dep(argv[i], NULL, ident);
-		}
+		if (!parent)
+			die("%s must be called inside a .do script\n", argv[0]);
 
-		return EXIT_SUCCESS;
+		if (ident == 'a')
+			add_dep(parent, parent, ident);
+		else
+			for (int i = 1; i < argc; ++i) {
+				update_target(argv[i], ident);
+				add_dep(argv[i], parent, ident);
+			}
 	}
+
+	return EXIT_SUCCESS;
 }
