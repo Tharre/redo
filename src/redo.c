@@ -44,7 +44,6 @@ void prepare_env() {
 	free(cwd);
 
 	/* set REDO_MAGIC */
-	srand(time(NULL));
 	char magic_str[digits(UINT_MAX) + 1];
 	sprintf(magic_str, "%u", rand());
 	if (setenv("REDO_MAGIC", magic_str, 0))
@@ -52,6 +51,7 @@ void prepare_env() {
 }
 
 int main(int argc, char *argv[]) {
+	srand(time(NULL));
 	char *argv_base = xbasename(argv[0]);
 
 	if (!strcmp(argv_base, "redo")) {
@@ -66,6 +66,7 @@ int main(int argc, char *argv[]) {
 		char *parent = getenv("REDO_PARENT_TARGET");
 
 		char ident;
+		char **temp;
 		if      (!strcmp(argv_base, "redo-ifchange"))
 			ident = 'c';
 		else if (!strcmp(argv_base, "redo-ifcreate"))
@@ -82,8 +83,14 @@ int main(int argc, char *argv[]) {
 			add_dep(parent, parent, ident);
 		else
 			for (int i = 1; i < argc; ++i) {
-				update_target(argv[i], ident);
-				add_dep(argv[i], parent, ident);
+				do {
+					temp = &argv[rand() % (argc-1) + 1];
+				} while (!*temp);
+
+				update_target(*temp, ident);
+				add_dep(*temp, parent, ident);
+
+				*temp = NULL;
 			}
 	}
 
