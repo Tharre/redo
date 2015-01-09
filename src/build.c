@@ -399,7 +399,8 @@ static void hash_file(const char *target, unsigned char *hash) {
 
 /* Write the dependency information into the specified path. */
 static void write_dep_info(dep_info *dep) {
-	int out = open(dep->path, O_WRONLY | O_CREAT, 0644);
+	mode_t mode = S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH;
+	int out = open(dep->path, O_WRONLY | O_CREAT, mode);
 	if (out < 0)
 		fatal("redo: failed to open %s", dep->path);
 
