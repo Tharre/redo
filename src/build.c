@@ -339,12 +339,8 @@ static char *get_dep_path(const char *target) {
 	return dep_path;
 }
 
-/* Add the dependency target, with the identifier ident. If parent is NULL, the
- * value of the environment variable REDO_PARENT will be taken instead. */
+/* Add the dependency target, with the identifier ident. */
 void add_dep(const char *target, const char *parent, int ident) {
-	if (!parent)
-		parent = getenv("REDO_PARENT_TARGET");
-
 	char *dep_path = get_dep_path(parent);
 
 	FILE *fp = fopen(dep_path, "rb+");
