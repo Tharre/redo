@@ -2,4 +2,8 @@ language: c
 compiler:
   - gcc
   - clang
-script: ./autogen.sh && ./configure && ./build.sh
+script: ./autogen.sh && ./configure && ./build.sh && bats test/
+before_install:
+  - sudo add-apt-repository ppa:duggan/bats --yes
+  - sudo apt-get update -qq
+  - sudo apt-get install -qq bats
