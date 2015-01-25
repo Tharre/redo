@@ -437,7 +437,7 @@ static int handle_c(const char *target) {
 		}
 	}
 
-	char buf[8096 > FILENAME_MAX+3 ? 8096 : FILENAME_MAX*2];
+	char buf[FILENAME_MAX];
 
 	if (fread(buf, 1, HEADERSIZE, fp) < HEADERSIZE)
 		fatal("redo: failed to read %zu bytes from %s", HEADERSIZE, dep_path);
