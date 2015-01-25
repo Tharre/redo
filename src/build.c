@@ -339,38 +339,42 @@ static char *get_dep_path(const char *target) {
 	return dep_path;
 }
 
-/* Add the dependency target, with the identifier ident. */
+/* Declare that `parent` depends on `target`. */
 void add_dep(const char *target, const char *parent, int ident) {
 	char *dep_path = get_dep_path(parent);
 
-	FILE *fp = fopen(dep_path, "rb+");
-	if (!fp) {
-		if (errno == ENOENT) {
-			fp = fopen(dep_path, "w");
-			if (!fp)
-				fatal("redo: failed to open %s", dep_path);
-			/* skip the first n bytes that are reserved for the header */
-			fseek(fp, HEADERSIZE, SEEK_SET);
-		} else {
+	int fd = open(dep_path, O_WRONLY | O_APPEND);
+	if (fd < 0) {
+		if (errno != ENOENT)
 			fatal("redo: failed to open %s", dep_path);
-		}
-	} else {
-		fseek(fp, 0L, SEEK_END);
+
+		/* no dependency record was found, so we create one */
+		mode_t mode = S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH;
+		fd = open(dep_path, O_WRONLY | O_APPEND | O_CREAT, mode);
+		if (fd < 0)
+			fatal("redo: failed to open %s", dep_path);
 	}
 
+	char garbage[HEADERSIZE];
+
+	/* skip header */
+	if (lseek(fd, 0, SEEK_END) < (off_t) HEADERSIZE)
+		pwrite(fd, garbage, HEADERSIZE, 0);
+
 	char *reltarget = get_relpath(target);
-
-	putc(ident, fp);
-	fputs(reltarget, fp);
-	putc('\0', fp);
-
-	if (ferror(fp))
+	int bufsize = strlen(reltarget) + 2;
+	char *buf = xmalloc(bufsize);
+	buf[0] = ident;
+	strcpy(buf+1, reltarget);
+	if (write(fd, buf, bufsize) < bufsize)
 		fatal("redo: failed to write to %s", dep_path);
 
-	if (fclose(fp))
+	if (close(fd))
 		fatal("redo: failed to close %s", dep_path);
-	free(dep_path);
+
+	free(buf);
 	free(reltarget);
+	free(dep_path);
 }
 
 /* Hash target, storing the result in hash. */
