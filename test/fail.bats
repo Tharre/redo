@@ -9,6 +9,5 @@ load test_helper
 
 @test "invoke with failing do-file" {
 	run redo fail
-	sync
 	[ $status -ne 0 ] && [ ! -e fail_result ]
 }
