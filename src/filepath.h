@@ -14,7 +14,7 @@
 extern bool is_absolute(const char* path);
 extern char *remove_ext(const char *str);
 extern char *take_extension(const char *target);
-extern const char *make_relative(const char *target, const char *to);
+extern char *relpath(char *path, char *start);
 extern char *transform_path(const char *target);
 extern char *xbasename(const char *path);
 extern bool fexists(const char *target);

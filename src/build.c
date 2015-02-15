@@ -322,9 +322,9 @@ static char *get_relpath(const char *target) {
 	if (!abstarget)
 		fatal("redo: failed to get realpath() of %s", target);
 
-	char *relpath = xstrdup(make_relative(root, abstarget));
+	char *path = xstrdup(relpath(abstarget, root));
 	free(abstarget);
-	return relpath;
+	return path;
 }
 
 /* Return the dependency file path of target. */

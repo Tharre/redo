@@ -53,27 +53,33 @@ char *take_extension(const char *target) {
 		return "";
 }
 
-/* Make one path relative to another i.e. some/path to some/path/a/b/c would
-   yield a/b/c as result. Prints '.' if the 2 paths match. */
-// TODO: nameing, requires absolute paths, doesn't MALLOC
-const char *make_relative(const char *target, const char *to) {
+/* Returns a pointer to a relative path to `path` from `start`. This pointer may
+   be pointing to either of it's arguments, or to the statically allocated
+   string "." should both paths match. Both paths must be canonicalized.
+   A few examples:
+    relpath("/abc/de", "/abc/de") => "."
+    relpath("some/path/a/b/c", "some/path") => "a/b/c"
+    relpath("some/path", "some/path/a/b/c") => "some/path/a/b/c"
+    relpath("/", "/") => "."
+    relpath("/abc", "/") => "abc"
+ */
+char *relpath(char *path, char *start) {
 	int i;
-	for (i = 0; target[i] && to[i]; ++i)
-		if (target[i] != to[i]) {
-			/* the paths do not match */
-			return to;
-		}
-
-	if (!target[i] && !to[i]) {
-		/* both paths match completely */
-		return ".";
+	for (i = 0; path[i] && start[i]; ++i) {
+		if (path[i] != start[i])
+			return path; /* paths share nothing */
 	}
 
-	/* skip any leading seperators */
-	while (to[i] == '/')
+	if (!path[i] && start[i])
+		return start; /* path is above start */
+
+	if (!path[i] && !start[i])
+		return "."; /* paths match completely */
+
+	if (path[i] == '/')
 		++i;
 
-	return &to[i];
+	return &path[i];
 }
 
 /* Transforms target into a safe filename, replacing all '/' with '!'. */
