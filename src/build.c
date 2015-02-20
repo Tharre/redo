@@ -112,19 +112,14 @@ int build_target(const char *target) {
 		/* child */
 
 		/* change directory to our target */
-		char *dirc = xstrdup(target);
-		char *dtarget = dirname(dirc);
-		if (chdir(dtarget) == -1)
-			fatal("redo: failed to change directory to %s", dtarget);
+		char *dirc = xstrdup(dofiles->chosen);
+		char *ddofile = dirname(dirc);
+		if (chdir(ddofile) == -1)
+			fatal("redo: failed to change directory to %s", ddofile);
 
 		free(dirc);
 
-		/* target is now in the cwd so change path accordingly */
-		char *btarget = xbasename(target);
-		char *bdo_file = xbasename(dofiles->chosen);
-		char *btemp_output = xbasename(temp_output);
-
-		char **argv = parse_shebang(btarget, bdo_file, btemp_output);
+		char **argv = parse_shebang((char*)target, dofiles->chosen, temp_output);
 
 		/* set "REDO_PARENT_TARGET" */
 		if (setenv("REDO_PARENT_TARGET", target, 1))
