@@ -1,0 +1,35 @@
+redo-ifcreate(1) -- rebuild if target is created
+================================================
+
+## SYNOPSIS
+
+`redo-ifcreate` [<targets>...]
+
+## DESCRIPTION
+
+`redo-ifcreate` creates a 'on create' dependency on the given (nonexistent)
+<targets>. Should any of those be created in the future, then
+`REDO_PARENT_TARGET` (usually the target that is being built by the .do script)
+is flagged out-of-date.
+
+If any of the <targets> already exist `redo-ifcreate` will return a nonzero exit
+code.
+
+This command should usually be called from within a .do script. See redo(1).
+
+## EXAMPLES
+
+(none yet)
+
+## ENVIRONMENT
+
+Requires `REDO_PARENT_TARGET` and `REDO_ROOT` to be defined. See redo(1) for a
+description of these variables.
+
+## SEE ALSO
+
+redo-ifchange(1), redo-always(1)
+
+## REDO
+
+Part of the redo(1) suite.

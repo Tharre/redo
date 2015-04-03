@@ -1,0 +1,34 @@
+redo-ifchange(1) -- rebuild if target changes
+=============================================
+
+## SYNOPSIS
+
+`redo-ifchange` [<targets>...]
+
+## DESCRIPTION
+
+`redo-ifchange` creates a 'on change' dependency on the given <targets>.  Should
+any of those change in the future, then `REDO_PARENT_TARGET` (usually the target
+that is being built by the .do script) is flagged out-of-date.
+
+All <targets> that are out-of-date will be rebuild **in random order** by the
+equivalent of _redo target_.
+
+This command should usually be called from within a .do script. See redo(1).
+
+## EXAMPLES
+
+(none yet)
+
+## ENVIRONMENT
+
+Requires `REDO_PARENT_TARGET` and `REDO_ROOT` to be defined. See redo(1) for a
+description of these variables.
+
+## SEE ALSO
+
+redo-ifcreate(1), redo-always(1)
+
+## REDO
+
+Part of the redo(1) suite.

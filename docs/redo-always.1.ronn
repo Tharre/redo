@@ -1,0 +1,31 @@
+redo-always(1) -- rebuild always
+================================
+
+## SYNOPSIS
+
+`redo-always`
+
+## DESCRIPTION
+
+`redo-always` creates a 'always' dependency on `REDO_PARENT_TARGET` - it will be
+rebuilt every time.  However, should multiple files depend on the same target
+it will only be rebuild once.
+
+This command should usually be called from within a .do script. See redo(1).
+
+## EXAMPLES
+
+(none yet)
+
+## ENVIRONMENT
+
+Requires `REDO_PARENT_TARGET` and `REDO_ROOT` to be defined. See redo(1) for a
+description of these variables.
+
+## SEE ALSO
+
+redo-ifchange(1), redo-ifcreate(1)
+
+## REDO
+
+Part of the redo(1) suite.

@@ -1,0 +1,84 @@
+redo(1) -- an elegant and minimal build tool
+============================================
+
+## SYNOPSIS
+
+`redo` [<options>...] [<targets>...]
+
+## DESCRIPTION
+
+`redo` is a powerful yet minimalistic tool for rebuilding files and their
+dependencies from source, based on rules specified in .do scripts.  These
+scripts have the unique property of being language independent - they only
+require a valid shebang-like line.
+
+`redo` is inherently recursive, it works by executing .do scripts which call
+redo-ifchange(1) or other redo subcommands which in turn again execute .do
+scripts.  This enables `redo` to be clean, modular and extremely fast.
+
+`redo` is also atomic, at no point in the build process exists a state in which
+a truncated file is left in place.  Any changes to .do files immediately result
+in depending targets getting flagged out-of-date.  This means the user doesn't
+have to care about the state his build is in anymore, it's all handled by `redo`
+
+## FILES
+
+The `redo` command expects to find a suitable .do script for the specified
+<targets>.  If none is given, 'all' is assumed instead.
+
+Suitable .do script pathnames are determined using the following pattern in
+descending order:
+
+  * target filename + '.do'
+  * default.ext.do
+  * repeat for ../, except if we are already in REDO_ROOT
+
+Where '.ext' is everything following the last dot (.) that could be found in the
+target filename.  `redo` will return an nonzero exit code should no suitable .do
+script exist.
+
+## ARGUMENTS
+
+If a suitable .do script was found then it will be executed with the following
+arguments:
+
+  * $1 - The filename of the target file.
+  * $2 - The target filename minus extension
+  * $3 - A temporary file that will be renamed to the target filename if the .do
+    script returns an nonzero exit code.
+
+For `redo` to function correctly the target that is being built by the .do
+script must be saved as $3.
+
+## SHEBANG
+
+(not documented yet)
+
+## OPTIONS
+
+  * `-j`[<maxjobs>], `--jobs`[=<maxjobs>]:
+    Execute no more than <maxjobs> .do scripts at any point in parallel.  If
+    this option was given without an argument, then `redo` will not limit the
+    number of jobs.  By default this equals the number of threads of the target
+    machine or 1 if this couldn't be determined.
+
+## EXAMPLES
+
+(none yet)
+
+## ENVIRONMENT
+
+  * `REDO_PARENT_TARGET`:
+    The target that shall be build by the .do script.
+
+  * `REDO_ROOT`:
+    The canonicalized absolute pathname corresponding to the 'root' directory
+    of `redo`, which contains the _.redo/_ directory.
+
+## SEE ALSO
+
+redo-ifchange(1), redo-ifcreate(1), redo-always(1)
+
+## REDO
+
+Part of the redo(1) suite.
