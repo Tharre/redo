@@ -5,7 +5,7 @@ export SRCDIR=$ROOTDIR/src
 export OUTDIR=$ROOTDIR/out
 export VERSION="pre-0.01"
 
-DESTDIR=${DESTDIR-/usr/bin}
+DESTDIR=${DESTDIR-/usr/local/bin}
 
 if [ "$1" = "all" ]; then
 	redo-ifchange "$OUTDIR/redo"
