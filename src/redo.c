@@ -31,10 +31,6 @@ void prepare_env() {
 	    && getenv("REDO_MAGIC"))
 		return;
 
-	/* create the dependency store if it doesn't already exist */
-	if (mkdirp(".redo") && mkdirp(".redo/deps"))
-		fprintf(stderr, "redo: creating dependency store ...\n");
-
 	/* set REDO_ROOT */
 	char *cwd = getcwd(NULL, 0);
 	if (!cwd)

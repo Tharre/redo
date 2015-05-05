@@ -319,11 +319,18 @@ static char *get_relpath(const char *target) {
 static char *get_dep_path(const char *target) {
 	char *root = getenv("REDO_ROOT");
 	char *reltarget = get_relpath(target);
-	char *xtarget = transform_path(reltarget);
-	char *dep_path = concat(3, root, "/.redo/deps/", xtarget);
+	char *dep_path;
+
+	if (is_absolute(reltarget)) {
+		dep_path = concat(3, root, "/.redo/abs/", reltarget);
+	} else {
+		dep_path = concat(3, root, "/.redo/rel/", reltarget);
+	}
+
+	/* create directory */
+	mkpath(dep_path, 0755); /* TODO: should probably be somewhere else */
 
 	free(reltarget);
-	free(xtarget);
 	return dep_path;
 }
 

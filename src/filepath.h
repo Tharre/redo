@@ -15,10 +15,9 @@ extern bool is_absolute(const char* path);
 extern char *remove_ext(const char *str);
 extern char *take_extension(const char *target);
 extern char *relpath(char *path, char *start);
-extern char *transform_path(const char *target);
 extern char *xbasename(const char *path);
 extern bool fexists(const char *target);
 extern off_t fsize(const char *fn);
-extern bool mkdirp(const char *dir);
+extern void mkpath(char *path, mode_t mode);
 
 #endif

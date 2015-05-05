@@ -82,28 +82,6 @@ char *relpath(char *path, char *start) {
 	return &path[i];
 }
 
-/* Transforms target into a safe filename, replacing all '/' with '!'. */
-char *transform_path(const char *target) {
-	char *ptr = (char*) target;
-	size_t escape = 0, i = 0;
-	while (*ptr++)
-		if (*ptr == '!') escape++;
-
-	ptr = xmalloc((ptr-target) + escape + 1);
-	do {
-		if (*target == '/')
-			ptr[i++] = '!';
-		else if (*target == '!') {
-			ptr[i++] = '!';
-			ptr[i++] = '!';
-		} else
-			ptr[i++] = *target;
-	} while (*target++);
-
-	ptr[i] = '\0';
-	return ptr;
-}
-
 /* Sane and portable basename implementation. */
 char *xbasename(const char *path) {
 	assert(path);
@@ -134,26 +112,17 @@ off_t fsize(const char *fn) {
 	return st.st_size;
 }
 
-/* Create the directory dir, while removing other 'files' with the same name.
-   Returns true if the directory had to be created or false if it existed */
-// TODO: fix confusing name
-bool mkdirp(const char *dir) {
-	struct stat st;
-	if (stat(dir, &st)) {
-		/* dir doesn't exist or stat failed */
-		if (errno != ENOENT)
-			fatal("redo: failed to aquire stat() information about %s", dir);
-		if (mkdir(dir, 0755))
-			fatal("redo: failed to mkdir() '%s'", dir);
-		return 1;
-	} else {
-		if (!S_ISDIR(st.st_mode)) {
-			if (remove(dir))
-				fatal("redo: failed to remove %s", dir);
-			if (mkdir(dir, 0755))
-				fatal("redo: failed to mkdir() '%s'", dir);
-			return 1;
-		}
-		return 0;
+/* Create the target directory recursively much like `mkdir -p` */
+void mkpath(char *path, mode_t mode) {
+	assert(path && *path);
+	char *p;
+
+	for (p=strchr(path+1, '/'); p; p=strchr(p+1, '/')) {
+		*p = '\0';
+		if (mkdir(path, mode) == -1)
+			if (errno != EEXIST)
+				fatal("redo: failed to mkdir() '%s'", path);
+
+		*p = '/';
 	}
 }
