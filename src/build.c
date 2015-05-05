@@ -80,7 +80,7 @@ int build_target(const char *target) {
 	}
 
 	char *reltarget = get_relpath(target);
-	printf("redo  %s\n", reltarget);
+	printf("\033[32mredo  \033[1m\033[37m%s\033[0m\n", reltarget);
 	free(reltarget);
 
 	/* get the old hash (if any) */
