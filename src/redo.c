@@ -88,7 +88,7 @@ int main(int argc, char *argv[]) {
 				} while (!*temp);
 
 				update_target(*temp, ident);
-				add_dep(*temp, parent, ident);
+				add_dep(*temp, xbasename(parent), ident);
 
 				*temp = NULL;
 			}

@@ -119,7 +119,8 @@ int build_target(const char *target) {
 
 		free(dirc);
 
-		char **argv = parse_shebang((char*)target, dofiles->chosen, temp_output);
+		char **argv = parse_shebang(xbasename((char*)target),
+				xbasename(dofiles->chosen), xbasename(temp_output));
 
 		/* set "REDO_PARENT_TARGET" */
 		if (setenv("REDO_PARENT_TARGET", target, 1))
@@ -267,15 +268,7 @@ static do_attr *get_dofiles(const char *target) {
 	do_attr *dofiles = xmalloc(sizeof(do_attr));
 
 	dofiles->specific = concat(2, target, ".do");
-	if (!is_absolute(target)) {
-		dofiles->general = concat(3, "default", take_extension(target), ".do");
-	} else {
-		char *dirc = xstrdup(target);
-		char *dt = dirname(dirc);
-
-		dofiles->general = concat(4, dt, "/default", take_extension(target), ".do");
-		free(dirc);
-	}
+	dofiles->general = concat(3, "default", take_extension(target), ".do");
 
 	if (fexists(dofiles->specific))
 		dofiles->chosen = dofiles->specific;
@@ -456,6 +449,7 @@ static int handle_c(const char *target) {
 	if (dep->magic == (unsigned) atoi(getenv("REDO_MAGIC")))
 		/* magic number matches */
 		return 1;
+
 
 	bool rebuild = false;
 	unsigned char hash[HASHSIZE];
