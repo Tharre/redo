@@ -10,7 +10,7 @@ DESTDIR=${DESTDIR-/usr/local/bin}
 if [ "$1" = "all" ]; then
 	redo-ifchange "$OUTDIR/redo"
 elif [ "$1" = "clean" ]; then
-	rm -rf "$OUTDIR/*.tmp" "$OUTDIR/*.o" "$OUTDIR/redo" "$OUTDIR/CC"
+	rm -rf "$OUTDIR"/*.tmp "$OUTDIR"/*.o "$OUTDIR"/redo "$OUTDIR"/CC
 	# autoconf stuff
 	rm -rf autom4te.cache config.h.in configure config.status config.log config.h
 elif [ "$1" = "install" ]; then
