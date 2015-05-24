@@ -49,7 +49,7 @@ static char **parse_shebang(char *target, char *dofile, char *temp_output);
 static char **parsecmd(char *cmd, size_t *i, size_t keep_free);
 static char *get_relpath(const char *target);
 static char *get_dep_path(const char *target);
-static void write_dep_info(dep_info *dep);
+static void write_dep_header(dep_info *dep);
 static int handle_c(const char *target);
 static void hash_file(const char *target, unsigned char *hash);
 
@@ -71,7 +71,7 @@ int build_target(const char *target) {
 			   then we treat it as a source */
 			dep.flags |= DEP_SOURCE;
 			hash_file(target, dep.hash);
-			write_dep_info(&dep);
+			write_dep_header(&dep);
 			goto exit;
 		}
 
@@ -162,7 +162,7 @@ int build_target(const char *target) {
 		if (retval)
 			memcpy(dep.hash, new_hash, 20);
 
-		write_dep_info(&dep);
+		write_dep_header(&dep);
 	} else {
 		if (remove(temp_output))
 			if (errno != ENOENT)
@@ -176,7 +176,7 @@ int build_target(const char *target) {
 	dep.path = get_dep_path(dofiles->chosen);
 	if (!fexists(dep.path)) {
 		hash_file(dofiles->chosen, dep.hash);
-		write_dep_info(&dep);
+		write_dep_header(&dep);
 	}
 	add_dep(dofiles->chosen, target, 'c');
 
@@ -408,7 +408,7 @@ void sha1_to_hex(const unsigned char *sha1, char *buf) {
 }
 
 /* Write the dependency information into the specified path. */
-static void write_dep_info(dep_info *dep) {
+static void write_dep_header(dep_info *dep) {
 	mode_t mode = S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH;
 	int out = open(dep->path, O_WRONLY | O_CREAT, mode);
 	if (out < 0)
