@@ -27,8 +27,7 @@
 #define _FILENAME "build.c"
 #include "dbg.h"
 
-#define HASHSIZE sizeof(((dep_info*)0)->hash)
-#define HEADERSIZE (sizeof(dep_info)-offsetof(dep_info, magic))
+#define HEADERSIZE 60
 
 typedef struct do_attr {
 	char *specific;
@@ -88,11 +87,11 @@ int build_target(const char *target) {
 	if (!fp) {
 		if (errno != ENOENT)
 			fatal("redo: failed to open %s\n", dep.path);
-		memset(dep.hash, 0, HASHSIZE); // FIXME
+		memset(dep.hash, 0, 20); /* FIXME */
 	} else {
 		if (fseek(fp, sizeof(unsigned), SEEK_SET))
 			fatal("redo: fseek() failed");
-		if (fread(dep.hash, 1, HASHSIZE, fp) < HASHSIZE)
+		if (fread(dep.hash, 1, 20, fp) < 20)
 			fatal("redo: failed to read stuff");
 		fclose(fp);
 	}
@@ -159,9 +158,9 @@ int build_target(const char *target) {
 
 		unsigned char new_hash[20];
 		hash_file(target, new_hash);
-		retval = memcmp(new_hash, dep.hash, HASHSIZE);
+		retval = memcmp(new_hash, dep.hash, 20);
 		if (retval)
-			memcpy(dep.hash, new_hash, HASHSIZE);
+			memcpy(dep.hash, new_hash, 20);
 
 		write_dep_info(&dep);
 	} else {
@@ -338,6 +337,9 @@ static char *get_dep_path(const char *target) {
 void add_dep(const char *target, const char *parent, int ident) {
 	char *dep_path = get_dep_path(parent);
 
+	if (strchr(target, '\n'))
+		fatal("Newlines in targets are not supported.");
+
 	int fd = open(dep_path, O_WRONLY | O_APPEND);
 	if (fd < 0) {
 		if (errno != ENOENT)
@@ -351,16 +353,19 @@ void add_dep(const char *target, const char *parent, int ident) {
 	}
 
 	char garbage[HEADERSIZE];
+	memset(garbage, 'Z', HEADERSIZE);
 
 	/* skip header */
 	if (lseek(fd, 0, SEEK_END) < (off_t) HEADERSIZE)
 		pwrite(fd, garbage, HEADERSIZE, 0);
 
 	char *reltarget = get_relpath(target);
-	int bufsize = strlen(reltarget) + 2;
+	int bufsize = strlen(reltarget) + 3;
 	char *buf = xmalloc(bufsize);
 	buf[0] = ident;
-	strcpy(buf+1, reltarget);
+	buf[1] = '\t';
+	strcpy(buf+2, reltarget);
+	buf[bufsize-1] = '\n';
 	if (write(fd, buf, bufsize) < bufsize)
 		fatal("redo: failed to write to %s", dep_path);
 
@@ -392,6 +397,16 @@ static void hash_file(const char *target, unsigned char *hash) {
 	fclose(in);
 }
 
+void sha1_to_hex(const unsigned char *sha1, char *buf) {
+	static const char hex[] = "0123456789abcdef";
+
+	for (int i = 0; i < 20; ++i) {
+		char *pos = buf + i*2;
+		*pos++ = hex[sha1[i] >> 4];
+		*pos = hex[sha1[i] & 0xf];
+	}
+}
+
 /* Write the dependency information into the specified path. */
 static void write_dep_info(dep_info *dep) {
 	mode_t mode = S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH;
@@ -399,7 +414,15 @@ static void write_dep_info(dep_info *dep) {
 	if (out < 0)
 		fatal("redo: failed to open %s", dep->path);
 
-	if (write(out, &dep->magic, HEADERSIZE) < (ssize_t) HEADERSIZE)
+	char buf[60];
+	sprintf(buf, "%010u", dep->magic);
+	buf[10] = '\t';
+	sha1_to_hex(dep->hash, buf+11);
+	buf[51] = '\t';
+	memset(buf+52, '-', 7);
+	buf[59] = '\n';
+
+	if (write(out, buf, sizeof buf) < (ssize_t) sizeof buf)
 		fatal("redo: failed to write dependency info to '%s'", dep->path);
 
 	if (close(out))
@@ -443,29 +466,36 @@ static int handle_c(const char *target) {
 
 	free(dep_path);
 
-	dep_info *dep = (dep_info*) (buf-offsetof(dep_info, magic));
+	errno = 0;
+	buf[10] = '\0';
+	long magic = strtol(buf, NULL, 10);
+	if (errno)
+		return build_target(target);
 
 	if (!fexists(target)) {
-		if (dep->flags & DEP_SOURCE)
+		if (buf[52] == 'S') /* source flag set */
 			/* target is a source and must not be rebuild */
 			return 1;
 		else
 			return build_target(target);
 	}
 
-	if (dep->magic == (unsigned) atoi(getenv("REDO_MAGIC")))
+	if (magic == (unsigned) atoi(getenv("REDO_MAGIC")))
 		/* magic number matches */
 		return 1;
 
+	unsigned char hash[20];
+	char char_hash[40];
 
-	bool rebuild = false;
-	unsigned char hash[HASHSIZE];
 	hash_file(target, hash);
-	if (memcmp(hash, dep->hash, HASHSIZE))
+	sha1_to_hex(hash, char_hash);
+	buf[51] = '\0';
+	if (memcmp(char_hash, buf+11, 40))
 		return build_target(target);
 
 	char *ptr;
 	char *root = getenv("REDO_ROOT");
+	bool rebuild = false;
 
 	while (!feof(fp)) {
 		ptr = buf;
@@ -475,24 +505,25 @@ static int handle_c(const char *target) {
 			fatal("redo: failed to read %zu bytes from descriptor", sizeof buf);
 
 		for (size_t i = 0; i < read; ++i) {
-			if (buf[i])
+			if (buf[i] != '\n')
 				continue;
-			if (!is_absolute(&ptr[1])) {
+			buf[i] = '\0';
+			if (!is_absolute(&ptr[2])) {
 				/* if our path is relative we need to prefix it with the
 				   root project directory or the path will be invalid */
-				char *abs = concat(3, root, "/", &ptr[1]);
+				char *abs = concat(3, root, "/", &ptr[2]);
 				if (update_target(abs, ptr[0]))
 					rebuild = true;
 
 				free(abs);
 			} else {
-				if (update_target(&ptr[1], ptr[0]))
+				if (update_target(&ptr[2], ptr[0]))
 					rebuild = true;
 			}
 			ptr = &buf[i+1];
 		}
 
-		if (read && buf[read-1]) {
+		if (read && buf[read-1] != '\n') {
 			if (buf != ptr)
 				memmove(buf, ptr, buf-ptr + sizeof buf);
 			else
