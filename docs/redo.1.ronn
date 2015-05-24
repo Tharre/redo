@@ -48,7 +48,7 @@ arguments:
     script returns an nonzero exit code.
 
 For `redo` to function correctly the target that is being built by the .do
-script must be saved as $3.
+script must be saved under the filename $3.
 
 ## SHEBANG
 
