@@ -16,3 +16,7 @@ config.log
 config.status
 configure
 autom4te.cache
+
+# ignore generated docs
+docs/*.html
+docs/*.1
