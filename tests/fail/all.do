@@ -2,7 +2,7 @@
 
 rm -rf fail
 
-redo-ifchange fail >& /dev/null || true
+redo-ifchange fail 2> /dev/null || true
 
 assert "abort if do-script returns nonzero" << !
 [ ! -e fail ]
