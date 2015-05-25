@@ -43,9 +43,9 @@ typedef struct dep_info {
 #define DEP_SOURCE (1 << 1)
 } dep_info;
 
-static do_attr *get_dofiles(const char *target);
+static do_attr *get_doscripts(const char *target);
 static void free_do_attr(do_attr *thing);
-static char **parse_shebang(char *target, char *dofile, char *temp_output);
+static char **parse_shebang(char *target, char *doscript, char *temp_output);
 static char **parsecmd(char *cmd, size_t *i, size_t keep_free);
 static char *get_relpath(const char *target);
 static char *get_dep_path(const char *target);
@@ -54,7 +54,7 @@ static int handle_c(const char *target);
 static void hash_file(const char *target, unsigned char *hash);
 
 
-/* Build given target, using it's do-file. */
+/* Build given target, using it's .do script. */
 int build_target(const char *target) {
 	dep_info dep;
 	int retval = 1;
@@ -63,11 +63,11 @@ int build_target(const char *target) {
 	dep.magic = atoi(getenv("REDO_MAGIC"));
 	dep.flags = 0;
 
-	/* get the do-file which we are going to execute */
-	do_attr *dofiles = get_dofiles(target);
-	if (!dofiles->chosen) {
+	/* get the .do script which we are going to execute */
+	do_attr *doscripts = get_doscripts(target);
+	if (!doscripts->chosen) {
 		if (fexists(target)) {
-			/* if our target file has no do file associated but exists,
+			/* if our target file has no .do script associated but exists,
 			   then we treat it as a source */
 			dep.flags |= DEP_SOURCE;
 			hash_file(target, dep.hash);
@@ -75,7 +75,7 @@ int build_target(const char *target) {
 			goto exit;
 		}
 
-		die("%s couldn't be built as no suitable do-file exists\n", target);
+		die("%s couldn't be built as no suitable .do script exists\n", target);
 	}
 
 	char *reltarget = get_relpath(target);
@@ -87,6 +87,7 @@ int build_target(const char *target) {
 	if (!fp) {
 		if (errno != ENOENT)
 			fatal("redo: failed to open %s\n", dep.path);
+
 		memset(dep.hash, 0, 20); /* FIXME */
 	} else {
 		if (fseek(fp, sizeof(unsigned), SEEK_SET))
@@ -111,15 +112,15 @@ int build_target(const char *target) {
 		/* child */
 
 		/* change directory to our target */
-		char *dirc = xstrdup(dofiles->chosen);
-		char *ddofile = dirname(dirc);
-		if (chdir(ddofile) == -1)
-			fatal("redo: failed to change directory to %s", ddofile);
+		char *dirc = xstrdup(doscripts->chosen);
+		char *ddoscript = dirname(dirc);
+		if (chdir(ddoscript) == -1)
+			fatal("redo: failed to change directory to %s", ddoscript);
 
 		free(dirc);
 
 		char **argv = parse_shebang(xbasename((char*)target),
-				xbasename(dofiles->chosen), xbasename(temp_output));
+				xbasename(doscripts->chosen), xbasename(temp_output));
 
 		/* set "REDO_PARENT_TARGET" */
 		if (setenv("REDO_PARENT_TARGET", target, 1))
@@ -144,11 +145,11 @@ int build_target(const char *target) {
 	/* check how our child exited */
 	if (WIFEXITED(status)) {
 		if (WEXITSTATUS(status))
-			die("redo: invoked do-file %s failed: %d\n", dofiles->chosen,
+			die("redo: invoked .do script %s failed: %d\n", doscripts->chosen,
 			    WEXITSTATUS(status));
 	} else {
 		/* something very wrong happened with the child */
-		die("redo: invoked do-file did not terminate correctly\n");
+		die("redo: invoked .do script did not terminate correctly\n");
 	}
 
 	/* check if our output file is > 0 bytes long */
@@ -171,39 +172,39 @@ int build_target(const char *target) {
 
 	free(dep.path);
 
-	/* depend on the do-file */
+	/* depend on the .do script */
 	dep.flags = 0;
-	dep.path = get_dep_path(dofiles->chosen);
+	dep.path = get_dep_path(doscripts->chosen);
 	if (!fexists(dep.path)) {
-		hash_file(dofiles->chosen, dep.hash);
+		hash_file(doscripts->chosen, dep.hash);
 		write_dep_header(&dep);
 	}
-	add_dep(dofiles->chosen, target, 'c');
+	add_dep(doscripts->chosen, target, 'c');
 
 	/* redo-ifcreate on specific if general was chosen */
-	if (dofiles->general == dofiles->chosen)
-		add_dep(dofiles->specific, target, 'e');
+	if (doscripts->general == doscripts->chosen)
+		add_dep(doscripts->specific, target, 'e');
 
 	free(temp_output);
 exit:
 	free(dep.path);
-	free_do_attr(dofiles);
+	free_do_attr(doscripts);
 
 	return retval;
 }
 
 /* Read and parse shebang and return an argv-like pointer array containing the
    arguments. If no valid shebang could be found assume "/bin/sh -e" instead. */
-static char **parse_shebang(char *target, char *dofile, char *temp_output) {
-	FILE *fp = fopen(dofile, "rb");
+static char **parse_shebang(char *target, char *doscript, char *temp_output) {
+	FILE *fp = fopen(doscript, "rb");
 	if (!fp)
-		fatal("redo: failed to open %s", dofile);
+		fatal("redo: failed to open %s", doscript);
 
 	char buf[1024];
 
 	buf[ fread(buf, 1, sizeof(buf)-1, fp) ] = '\0';
 	if (ferror(fp))
-		fatal("redo: failed to read from %s", dofile);
+		fatal("redo: failed to read from %s", doscript);
 
 	fclose(fp);
 
@@ -217,7 +218,7 @@ static char **parse_shebang(char *target, char *dofile, char *temp_output) {
 		argv[i++] = "-e";
 	}
 
-	argv[i++] = dofile;
+	argv[i++] = doscript;
 	argv[i++] = target;
 	char *basename = remove_ext(target);
 	argv[i++] = basename;
@@ -262,21 +263,21 @@ static char **parsecmd(char *cmd, size_t *i, size_t keep_free) {
 	}
 }
 
-/* Return a struct with all the possible do-files, and the chosen one. */
-static do_attr *get_dofiles(const char *target) {
-	do_attr *dofiles = xmalloc(sizeof(do_attr));
+/* Return a struct with all the possible .do scripts, and the chosen one. */
+static do_attr *get_doscripts(const char *target) {
+	do_attr *doscripts = xmalloc(sizeof(do_attr));
 
-	dofiles->specific = concat(2, target, ".do");
-	dofiles->general = concat(3, "default", take_extension(target), ".do");
+	doscripts->specific = concat(2, target, ".do");
+	doscripts->general = concat(3, "default", take_extension(target), ".do");
 
-	if (fexists(dofiles->specific))
-		dofiles->chosen = dofiles->specific;
-	else if (fexists(dofiles->general))
-		dofiles->chosen = dofiles->general;
+	if (fexists(doscripts->specific))
+		doscripts->chosen = doscripts->specific;
+	else if (fexists(doscripts->general))
+		doscripts->chosen = doscripts->general;
 	else
-		dofiles->chosen = NULL;
+		doscripts->chosen = NULL;
 
-	return dofiles;
+	return doscripts;
 }
 
 /* Free the do_attr struct. */
