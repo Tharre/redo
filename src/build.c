@@ -97,7 +97,7 @@ int build_target(const char *target) {
 		fclose(fp);
 	}
 
-	/* remove old dependency file */
+	/* remove old dependency record */
 	if (remove(dep.path))
 		if (errno != ENOENT)
 			fatal("redo: failed to remove %s", dep.path);
@@ -315,7 +315,7 @@ static char *get_relpath(const char *target) {
 	return path;
 }
 
-/* Return the dependency file path of target. */
+/* Return the dependency record path of target. */
 static char *get_dep_path(const char *target) {
 	char *root = getenv("REDO_ROOT");
 	char *reltarget = get_relpath(target);
@@ -424,7 +424,7 @@ static void write_dep_header(dep_info *dep) {
 	buf[59] = '\n';
 
 	if (write(out, buf, sizeof buf) < (ssize_t) sizeof buf)
-		fatal("redo: failed to write dependency info to '%s'", dep->path);
+		fatal("redo: failed to write dependency record to '%s'", dep->path);
 
 	if (close(out))
 		fatal("redo: failed to close %s", dep->path);
@@ -452,7 +452,7 @@ static int handle_c(const char *target) {
 	FILE *fp = fopen(dep_path, "rb");
 	if (!fp) {
 		if (errno == ENOENT) {
-			/* dependency file does not exist */
+			/* dependency record does not exist */
 			free(dep_path);
 			return build_target(target);
 		} else {
@@ -528,7 +528,7 @@ static int handle_c(const char *target) {
 			if (buf != ptr)
 				memmove(buf, ptr, buf-ptr + sizeof buf);
 			else
-				die("redo: dependency file contains insanely long paths\n");
+				die("redo: dependency record contains insanely long paths\n");
 		}
 	}
 
