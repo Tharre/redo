@@ -1,0 +1,16 @@
+exec 1>/dev/null
+redo fail/all
+redo args/all
+redo a/all
+redo a--b,a--c,b--c/all
+redo a--b,a--c,b--d,c--d/all
+redo a--c,b--c/all
+redo a--c,b--c,c--d/all
+redo cwd/all
+#redo default/all
+#redo dodo/all
+redo always/all
+redo ifcreate/all
+#redo parallel/all
+#redo atomic/all
+redo dependency-loop/all
