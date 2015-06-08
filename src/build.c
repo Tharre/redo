@@ -347,8 +347,7 @@ void add_dep(const char *target, const char *parent, int ident) {
 			fatal("redo: failed to open %s", dep_path);
 
 		/* no dependency record was found, so we create one */
-		mode_t mode = S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH;
-		fd = open(dep_path, O_WRONLY | O_APPEND | O_CREAT, mode);
+		fd = open(dep_path, O_WRONLY | O_APPEND | O_CREAT, 0755);
 		if (fd < 0)
 			fatal("redo: failed to open %s", dep_path);
 	}
