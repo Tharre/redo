@@ -339,7 +339,7 @@ void add_dep(const char *target, const char *parent, int ident) {
 	char *dep_path = get_dep_path(parent);
 
 	if (strchr(target, '\n'))
-		fatal("Newlines in targets are not supported.");
+		die("redo: newlines in targets are not supported\n");
 
 	int fd = open(dep_path, O_WRONLY | O_APPEND);
 	if (fd < 0) {
