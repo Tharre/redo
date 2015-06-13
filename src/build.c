@@ -424,6 +424,8 @@ static void write_dep_header(dep_info *dep) {
 	sha1_to_hex(dep->new_hash, buf+11);
 	buf[51] = '\t';
 	memset(buf+52, '-', 7);
+	if (dep->flags & DEP_SOURCE)
+		buf[52] = 'S';
 	buf[59] = '\n';
 
 	if (write(out, buf, sizeof buf) < (ssize_t) sizeof buf)
