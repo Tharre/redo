@@ -254,19 +254,23 @@ static char **parsecmd(char *cmd, size_t *i, size_t keep_free) {
 
 /* Return a struct with all the possible .do scripts, and the chosen one. */
 static do_attr *get_doscripts(const char *target) {
-	do_attr *doscripts = xmalloc(sizeof(do_attr));
+	do_attr *ds = xmalloc(sizeof(do_attr));
 
-	doscripts->specific = concat(2, target, ".do");
-	doscripts->general = concat(3, "default", take_extension(target), ".do");
+	ds->specific = concat(2, target, ".do");
+	char *dirc = xstrdup(target);
+	char *dt = dirname(dirc);
 
-	if (fexists(doscripts->specific))
-		doscripts->chosen = doscripts->specific;
-	else if (fexists(doscripts->general))
-		doscripts->chosen = doscripts->general;
+	ds->general = concat(4, dt, "/default", take_extension(target), ".do");
+	free(dirc);
+
+	if (fexists(ds->specific))
+		ds->chosen = ds->specific;
+	else if (fexists(ds->general))
+		ds->chosen = ds->general;
 	else
-		doscripts->chosen = NULL;
+		ds->chosen = NULL;
 
-	return doscripts;
+	return ds;
 }
 
 /* Free the do_attr struct. */
