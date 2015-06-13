@@ -160,9 +160,6 @@ static int build_target(dep_info *dep) {
 		.magic = dep->magic,
 		.target = dep->target,
 		.path = get_dep_path(doscripts->chosen),
-		.old_hash = NULL,
-		.new_hash = NULL,
-		.flags = 0,
 	};
 
 	if (!fexists(dep2.path)) {
@@ -437,9 +434,6 @@ int update_target(const char *target, int ident) {
 		.magic = atoi(getenv("REDO_MAGIC")),
 		.target = target,
 		.path = get_dep_path(target),
-		.old_hash = NULL,
-		.new_hash = NULL,
-		.flags = 0,
 	};
 
 	int retval = handle_ident(&dep, ident);
