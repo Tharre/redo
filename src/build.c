@@ -394,7 +394,7 @@ static unsigned char *hash_file(const char *target) {
 	return hash;
 }
 
-void sha1_to_hex(const unsigned char *sha1, char *buf) {
+static void sha1_to_hex(const unsigned char *sha1, char *buf) {
 	static const char hex[] = "0123456789abcdef";
 
 	for (int i = 0; i < 20; ++i) {
