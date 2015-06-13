@@ -55,8 +55,7 @@ static void hash_file(const char *target, unsigned char *hash);
 
 
 /* Build given target, using it's .do script. */
-int build_target(const char *target) {
-	dep_info dep;
+static int build_target(const char *dep) {
 	int retval = 1;
 
 	dep.path = get_dep_path(target);
