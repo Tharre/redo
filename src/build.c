@@ -38,7 +38,8 @@ typedef struct do_attr {
 typedef struct dep_info {
 	const char *target;
 	char *path;
-	unsigned char *hash;
+	unsigned char *old_hash;
+	unsigned char *new_hash;
 	unsigned int magic;
 	int32_t flags;
 #define DEP_SOURCE (1 << 1)
@@ -67,7 +68,9 @@ static int build_target(dep_info *dep) {
 			/* if our target file has no .do script associated but exists,
 			   then we treat it as a source */
 			dep->flags |= DEP_SOURCE;
-			dep->hash = hash_file(dep->target);
+			if (!dep->new_hash)
+				dep->new_hash = hash_file(dep->target);
+
 			write_dep_header(dep);
 			goto exit;
 		}
@@ -140,16 +143,11 @@ static int build_target(dep_info *dep) {
 		if (rename(temp_output, dep->target))
 			fatal("redo: failed to rename %s to %s", temp_output, dep->target);
 
-		unsigned char *new_hash = hash_file(dep->target);
-		if (dep->hash) {
-			retval = memcmp(new_hash, dep->hash, 20);
-			if (retval)
-				memcpy(dep->hash, new_hash, 20);
-
-			free(new_hash);
-		} else {
-			dep->hash = new_hash;
-		}
+		/* recalculate hash after successful build */
+		free(dep->new_hash);
+		dep->new_hash = hash_file(dep->target);
+		if (dep->old_hash)
+			retval = memcmp(dep->new_hash, dep->old_hash, 20);
 
 		write_dep_header(dep);
 	} else {
@@ -162,14 +160,15 @@ static int build_target(dep_info *dep) {
 		.magic = dep->magic,
 		.target = dep->target,
 		.path = get_dep_path(doscripts->chosen),
-		.hash = NULL,
+		.old_hash = NULL,
+		.new_hash = NULL,
 		.flags = 0,
 	};
 
 	if (!fexists(dep2.path)) {
-		dep2.hash = hash_file(doscripts->chosen);
+		dep2.new_hash = hash_file(doscripts->chosen);
 		write_dep_header(&dep2);
-		free(dep2.hash);
+		free(dep2.new_hash);
 	}
 	free(dep2.path);
 
@@ -404,6 +403,13 @@ static void sha1_to_hex(const unsigned char *sha1, char *buf) {
 	}
 }
 
+static void hex_to_sha1(const char *s, unsigned char *sha1) {
+	static const char hex[] = "0123456789abcdef";
+
+	for (; *s; s += 2, ++sha1)
+		*sha1 = ((strchr(hex, *s) - hex) << 4) + strchr(hex, *(s+1)) - hex;
+}
+
 /* Write the dependency information into the specified path. */
 static void write_dep_header(dep_info *dep) {
 	mode_t mode = S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH;
@@ -414,7 +420,7 @@ static void write_dep_header(dep_info *dep) {
 	char buf[60];
 	sprintf(buf, "%010u", dep->magic);
 	buf[10] = '\t';
-	sha1_to_hex(dep->hash, buf+11);
+	sha1_to_hex(dep->new_hash, buf+11);
 	buf[51] = '\t';
 	memset(buf+52, '-', 7);
 	buf[59] = '\n';
@@ -431,13 +437,15 @@ int update_target(const char *target, int ident) {
 		.magic = atoi(getenv("REDO_MAGIC")),
 		.target = target,
 		.path = get_dep_path(target),
-		.hash = NULL,
+		.old_hash = NULL,
+		.new_hash = NULL,
 		.flags = 0,
 	};
 
 	int retval = handle_ident(&dep, ident);
 	free(dep.path);
-	free(dep.hash);
+	free(dep.old_hash);
+	free(dep.new_hash);
 
 	return retval;
 }
@@ -491,13 +499,12 @@ static int handle_c(dep_info *dep) {
 		/* magic number matches */
 		return 1;
 
-	char char_hash[40];
-
-	unsigned char *hash = hash_file(dep->target);
-	sha1_to_hex(hash, char_hash);
-	free(hash);
+	dep->old_hash = xmalloc(20);
 	buf[51] = '\0';
-	if (memcmp(char_hash, buf+11, 40))
+	hex_to_sha1(buf+11, dep->old_hash); /* TODO: error checking */
+	dep->new_hash = hash_file(dep->target);
+
+	if (memcmp(dep->old_hash, dep->new_hash, 20))
 		return build_target(dep);
 
 	char *ptr;
