@@ -97,9 +97,8 @@ static int build_target(const char *dep) {
 	}
 
 	/* remove old dependency record */
-	if (remove(dep.path))
-		if (errno != ENOENT)
-			fatal("redo: failed to remove %s", dep.path);
+	if (remove(dep.path) && errno != ENOENT)
+		fatal("redo: failed to remove %s", dep->path);
 
 	char *temp_output = concat(2, target, ".redoing.tmp");
 
@@ -139,7 +138,7 @@ static int build_target(const char *dep) {
 	/* parent */
 	int status;
 	if (waitpid(pid, &status, 0) == -1)
-		fatal("waitpid() failed: ");
+		fatal("redo: waitpid() failed");
 
 	/* check how our child exited */
 	if (WIFEXITED(status)) {
@@ -164,9 +163,8 @@ static int build_target(const char *dep) {
 
 		write_dep_header(&dep);
 	} else {
-		if (remove(temp_output))
-			if (errno != ENOENT)
-				fatal("redo: failed to remove %s", temp_output);
+		if (remove(temp_output) && errno != ENOENT)
+			fatal("redo: failed to remove %s", temp_output);
 	}
 
 	free(dep.path);
