@@ -36,9 +36,10 @@ typedef struct do_attr {
 } do_attr;
 
 typedef struct dep_info {
+	const char *target;
 	char *path;
+	unsigned char *hash;
 	unsigned int magic;
-	unsigned char hash[20];
 	int32_t flags;
 #define DEP_SOURCE (1 << 1)
 } dep_info;
@@ -50,57 +51,40 @@ static char **parsecmd(char *cmd, size_t *i, size_t keep_free);
 static char *get_relpath(const char *target);
 static char *get_dep_path(const char *target);
 static void write_dep_header(dep_info *dep);
-static int handle_c(const char *target);
-static void hash_file(const char *target, unsigned char *hash);
+static int handle_ident(dep_info *dep, int ident);
+static int handle_c(dep_info *dep);
+static unsigned char *hash_file(const char *target);
 
 
 /* Build given target, using it's .do script. */
-static int build_target(const char *dep) {
+static int build_target(dep_info *dep) {
 	int retval = 1;
 
-	dep.path = get_dep_path(target);
-	dep.magic = atoi(getenv("REDO_MAGIC"));
-	dep.flags = 0;
-
 	/* get the .do script which we are going to execute */
-	do_attr *doscripts = get_doscripts(target);
+	do_attr *doscripts = get_doscripts(dep->target);
 	if (!doscripts->chosen) {
-		if (fexists(target)) {
+		if (fexists(dep->target)) {
 			/* if our target file has no .do script associated but exists,
 			   then we treat it as a source */
-			dep.flags |= DEP_SOURCE;
-			hash_file(target, dep.hash);
-			write_dep_header(&dep);
+			dep->flags |= DEP_SOURCE;
+			dep->hash = hash_file(dep->target);
+			write_dep_header(dep);
 			goto exit;
 		}
 
-		die("%s couldn't be built as no suitable .do script exists\n", target);
+		die("%s couldn't be built as no suitable .do script exists\n",
+				dep->target);
 	}
 
-	char *reltarget = get_relpath(target);
+	char *reltarget = get_relpath(dep->target);
 	printf("\033[32mredo  \033[1m\033[37m%s\033[0m\n", reltarget);
 	free(reltarget);
 
-	/* get the old hash (if any) */
-	FILE *fp = fopen(dep.path, "rb");
-	if (!fp) {
-		if (errno != ENOENT)
-			fatal("redo: failed to open %s\n", dep.path);
-
-		memset(dep.hash, 0, 20); /* FIXME */
-	} else {
-		if (fseek(fp, sizeof(unsigned), SEEK_SET))
-			fatal("redo: fseek() failed");
-		if (fread(dep.hash, 1, 20, fp) < 20)
-			fatal("redo: failed to read stuff");
-		fclose(fp);
-	}
-
 	/* remove old dependency record */
-	if (remove(dep.path) && errno != ENOENT)
+	if (remove(dep->path) && errno != ENOENT)
 		fatal("redo: failed to remove %s", dep->path);
 
-	char *temp_output = concat(2, target, ".redoing.tmp");
+	char *temp_output = concat(2, dep->target, ".redoing.tmp");
 
 	pid_t pid = fork();
 	if (pid == -1) {
@@ -117,12 +101,13 @@ static int build_target(const char *dep) {
 
 		free(dirc);
 
-		char **argv = parse_shebang(xbasename((char*)target),
+		char **argv = parse_shebang(xbasename(dep->target),
 				xbasename(doscripts->chosen), xbasename(temp_output));
 
 		/* set "REDO_PARENT_TARGET" */
-		if (setenv("REDO_PARENT_TARGET", target, 1))
-			fatal("redo: failed to setenv() REDO_PARENT_TARGET to %s", target);
+		if (setenv("REDO_PARENT_TARGET", dep->target, 1))
+			fatal("redo: failed to setenv() REDO_PARENT_TARGET to %s",
+					dep->target);
 
 		/* excelp() has nearly everything we want: automatic parsing of the
 		   shebang line through execve() and fallback to /bin/sh if no valid
@@ -152,39 +137,50 @@ static int build_target(const char *dep) {
 
 	/* check if our output file is > 0 bytes long */
 	if (fsize(temp_output) > 0) {
-		if (rename(temp_output, target))
-			fatal("redo: failed to rename %s to %s", temp_output, target);
+		if (rename(temp_output, dep->target))
+			fatal("redo: failed to rename %s to %s", temp_output, dep->target);
 
-		unsigned char new_hash[20];
-		hash_file(target, new_hash);
-		retval = memcmp(new_hash, dep.hash, 20);
-		if (retval)
-			memcpy(dep.hash, new_hash, 20);
+		unsigned char *new_hash = hash_file(dep->target);
+		if (dep->hash) {
+			retval = memcmp(new_hash, dep->hash, 20);
+			if (retval)
+				memcpy(dep->hash, new_hash, 20);
 
-		write_dep_header(&dep);
+			free(new_hash);
+		} else {
+			dep->hash = new_hash;
+		}
+
+		write_dep_header(dep);
 	} else {
 		if (remove(temp_output) && errno != ENOENT)
 			fatal("redo: failed to remove %s", temp_output);
 	}
 
-	free(dep.path);
-
 	/* depend on the .do script */
-	dep.flags = 0;
-	dep.path = get_dep_path(doscripts->chosen);
-	if (!fexists(dep.path)) {
-		hash_file(doscripts->chosen, dep.hash);
-		write_dep_header(&dep);
+	dep_info dep2 = {
+		.magic = dep->magic,
+		.target = dep->target,
+		.path = get_dep_path(doscripts->chosen),
+		.hash = NULL,
+		.flags = 0,
+	};
+
+	if (!fexists(dep2.path)) {
+		dep2.hash = hash_file(doscripts->chosen);
+		write_dep_header(&dep2);
+		free(dep2.hash);
 	}
-	add_dep(doscripts->chosen, target, 'c');
+	free(dep2.path);
+
+	add_dep(doscripts->chosen, dep->target, 'c');
 
 	/* redo-ifcreate on specific if general was chosen */
 	if (doscripts->general == doscripts->chosen)
-		add_dep(doscripts->specific, target, 'e');
+		add_dep(doscripts->specific, dep->target, 'e');
 
 	free(temp_output);
 exit:
-	free(dep.path);
 	free_do_attr(doscripts);
 
 	return retval;
@@ -374,11 +370,13 @@ void add_dep(const char *target, const char *parent, int ident) {
 	free(dep_path);
 }
 
-/* Hash target, storing the result in hash. */
-static void hash_file(const char *target, unsigned char *hash) {
+/* Hash the target file, returning a pointer to the heap allocated hash. */
+static unsigned char *hash_file(const char *target) {
 	FILE *in = fopen(target, "rb");
 	if (!in)
 		fatal("redo: failed to open %s", target);
+
+	unsigned char *hash = xmalloc(20);
 
 	SHA_CTX context;
 	unsigned char data[8192];
@@ -392,6 +390,8 @@ static void hash_file(const char *target, unsigned char *hash) {
 		fatal("redo: failed to read from %s", target);
 	SHA1_Final(hash, &context);
 	fclose(in);
+
+	return hash;
 }
 
 void sha1_to_hex(const unsigned char *sha1, char *buf) {
@@ -427,68 +427,78 @@ static void write_dep_header(dep_info *dep) {
 }
 
 int update_target(const char *target, int ident) {
+	dep_info dep = {
+		.magic = atoi(getenv("REDO_MAGIC")),
+		.target = target,
+		.path = get_dep_path(target),
+		.hash = NULL,
+		.flags = 0,
+	};
+
+	int retval = handle_ident(&dep, ident);
+	free(dep.path);
+	free(dep.hash);
+
+	return retval;
+}
+
+static int handle_ident(dep_info *dep, int ident) {
 	switch(ident) {
 	case 'a':
-		return build_target(target);
+		return build_target(dep);
 	case 'e':
-		if (fexists(target))
-			return build_target(target);
+		if (fexists(dep->target))
+			return build_target(dep);
 
 		return 0;
 	case 'c':
-		return handle_c(target);
+		return handle_c(dep);
 	default:
 		die("redo: unknown identifier '%c'\n", ident);
 	}
 }
 
-static int handle_c(const char *target) {
-	char *dep_path = get_dep_path(target);
-
-	FILE *fp = fopen(dep_path, "rb");
+static int handle_c(dep_info *dep) {
+	FILE *fp = fopen(dep->path, "rb");
 	if (!fp) {
-		if (errno == ENOENT) {
+		if (errno == ENOENT)
 			/* dependency record does not exist */
-			free(dep_path);
-			return build_target(target);
-		} else {
-			fatal("redo: failed to open %s", dep_path);
-		}
+			return build_target(dep);
+		else
+			fatal("redo: failed to open %s", dep->path);
 	}
 
 	char buf[FILENAME_MAX];
 
 	if (fread(buf, 1, HEADERSIZE, fp) < HEADERSIZE)
-		fatal("redo: failed to read %zu bytes from %s", HEADERSIZE, dep_path);
-
-	free(dep_path);
+		fatal("redo: failed to read %zu bytes from %s", HEADERSIZE, dep->path);
 
 	errno = 0;
 	buf[10] = '\0';
 	long magic = strtol(buf, NULL, 10);
 	if (errno)
-		return build_target(target);
+		return build_target(dep);
 
-	if (!fexists(target)) {
+	if (!fexists(dep->target)) {
 		if (buf[52] == 'S') /* source flag set */
 			/* target is a source and must not be rebuild */
 			return 1;
 		else
-			return build_target(target);
+			return build_target(dep);
 	}
 
-	if (magic == (unsigned) atoi(getenv("REDO_MAGIC")))
+	if (magic == dep->magic)
 		/* magic number matches */
 		return 1;
 
-	unsigned char hash[20];
 	char char_hash[40];
 
-	hash_file(target, hash);
+	unsigned char *hash = hash_file(dep->target);
 	sha1_to_hex(hash, char_hash);
+	free(hash);
 	buf[51] = '\0';
 	if (memcmp(char_hash, buf+11, 40))
-		return build_target(target);
+		return build_target(dep);
 
 	char *ptr;
 	char *root = getenv("REDO_ROOT");
@@ -530,7 +540,7 @@ static int handle_c(const char *target) {
 
 	fclose(fp);
 	if (rebuild)
-		return build_target(target);
+		return build_target(dep);
 
 	return 0;
 }
