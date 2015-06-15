@@ -59,8 +59,6 @@ int main(int argc, char *argv[]) {
 				update_target(argv[i], 'a');
 		}
 	} else {
-		char *parent = getenv("REDO_PARENT_TARGET");
-
 		char ident;
 		char **temp;
 		if      (!strcmp(argv_base, "redo-ifchange"))
@@ -72,7 +70,12 @@ int main(int argc, char *argv[]) {
 		else
 			die("redo: argv set to unkown value\n");
 
-		if (!parent)
+		/* ensure the environment is correct */
+		char *parent = getenv("REDO_PARENT_TARGET");
+		char *root = getenv("REDO_ROOT");
+		char *magic = getenv("REDO_MAGIC");
+
+		if (!parent || !root || !magic)
 			die("%s must be called inside a .do script\n", argv[0]);
 
 		if (ident == 'a')
