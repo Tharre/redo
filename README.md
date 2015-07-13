@@ -17,5 +17,5 @@ not set in stone yet. Missing features include parallel builds, recursive
 checking for do-files, automatic cleanup of built files and probably a lot more.
 
 # License
-This piece of software is distributed under the MIT license, see LICENSE for
-more details.
+Unless explicitly stated otherwise all files in this repository are licensed
+under the MIT license, see LICENSE for more details.
