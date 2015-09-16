@@ -16,8 +16,19 @@ cat > "d/check_args.ext1.ext2.do" <<'EOF'
 [ "$3" != "check_args.ext1.ext2" ]
 EOF
 
+cat > "absolute_paths.do" <<'EOF'
+#!/bin/sh -e
+cd /tmp
+echo "test" > $3
+EOF
+
 test_expect_success "check arguments" "
     redo d/check_args.ext1.ext2
+"
+
+test_expect_success "\$3 should be absolute" "
+    redo absolute_paths &&
+    [ -e absolute_paths ]
 "
 
 test_done

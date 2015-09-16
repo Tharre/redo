@@ -50,6 +50,7 @@ static void free_do_attr(do_attr *thing);
 static char **parse_shebang(char *target, char *doscript, char *temp_output);
 static char **parsecmd(char *cmd, size_t *i, size_t keep_free);
 static char *get_relpath(const char *target);
+static char *xrealpath(const char *path);
 static char *get_dep_path(const char *target);
 static void write_dep_header(dep_info *dep);
 static int handle_ident(dep_info *dep, int ident);
@@ -105,7 +106,7 @@ static int build_target(dep_info *dep) {
 		free(dirc);
 
 		char **argv = parse_shebang(xbasename(dep->target),
-				xbasename(doscripts->chosen), xbasename(temp_output));
+				xbasename(doscripts->chosen), xrealpath(temp_output));
 
 		/* set "REDO_PARENT_TARGET" */
 		if (setenv("REDO_PARENT_TARGET", dep->target, 1))
