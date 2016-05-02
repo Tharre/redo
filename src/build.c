@@ -97,6 +97,10 @@ static int build_target(dep_info *dep) {
 	} else if (pid == 0) {
 		/* child */
 
+		char *abstemp = xrealpath(temp_output);
+		if (!abstemp)
+			fatal("redo: failed to get realpath() of %s", temp_output);
+
 		/* change directory to our target */
 		char *dirc = xstrdup(doscripts->chosen);
 		char *ddoscript = dirname(dirc);
@@ -106,7 +110,7 @@ static int build_target(dep_info *dep) {
 		free(dirc);
 
 		char **argv = parse_shebang(xbasename(dep->target),
-				xbasename(doscripts->chosen), xrealpath(temp_output));
+				xbasename(doscripts->chosen), abstemp);
 
 		/* set "REDO_PARENT_TARGET" */
 		if (setenv("REDO_PARENT_TARGET", dep->target, 1))
