@@ -194,9 +194,9 @@ static char **parse_shebang(char *target, char *doscript, char *temp_output) {
 	if (!fp)
 		fatal("redo: failed to open %s", doscript);
 
-	char buf[1024];
+	char *buf = xmalloc(1024);
 
-	buf[ fread(buf, 1, sizeof(buf)-1, fp) ] = '\0';
+	buf[ fread(buf, 1, 1023, fp) ] = '\0';
 	if (ferror(fp))
 		fatal("redo: failed to read from %s", doscript);
 
