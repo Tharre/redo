@@ -1,6 +1,6 @@
 /* build.c
  *
- * Copyright (c) 2014 Tharre
+ * Copyright (c) 2014-2016 Tharre
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE file for details.
@@ -38,9 +38,7 @@ typedef struct do_attr {
 typedef struct dep_info {
 	const char *target;
 	char *path;
-	unsigned char *old_hash;
-	unsigned char *new_hash;
-	unsigned int magic;
+	unsigned char *hash;
 	int32_t flags;
 #define DEP_SOURCE (1 << 1)
 } dep_info;
@@ -69,8 +67,8 @@ static int build_target(dep_info *dep) {
 			/* if our target file has no .do script associated but exists,
 			   then we treat it as a source */
 			dep->flags |= DEP_SOURCE;
-			if (!dep->new_hash)
-				dep->new_hash = hash_file(dep->target);
+			if (!dep->hash)
+				dep->hash = hash_file(dep->target);
 
 			write_dep_header(dep);
 			goto exit;
@@ -149,10 +147,12 @@ static int build_target(dep_info *dep) {
 			fatal("redo: failed to rename %s to %s", temp_output, dep->target);
 
 		/* recalculate hash after successful build */
-		free(dep->new_hash);
-		dep->new_hash = hash_file(dep->target);
-		if (dep->old_hash)
-			retval = memcmp(dep->new_hash, dep->old_hash, 20);
+		unsigned char *old_hash = dep->hash;
+		dep->hash = hash_file(dep->target);
+		if (old_hash)
+			retval = memcmp(dep->hash, old_hash, 20);
+
+		free(old_hash);
 
 		write_dep_header(dep);
 	} else {
@@ -162,15 +162,14 @@ static int build_target(dep_info *dep) {
 
 	/* depend on the .do script */
 	dep_info dep2 = {
-		.magic = dep->magic,
 		.target = dep->target,
 		.path = get_dep_path(doscripts->chosen),
 	};
 
 	if (!fexists(dep2.path)) {
-		dep2.new_hash = hash_file(doscripts->chosen);
+		dep2.hash = hash_file(doscripts->chosen);
 		write_dep_header(&dep2);
-		free(dep2.new_hash);
+		free(dep2.hash);
 	}
 	free(dep2.path);
 
@@ -424,9 +423,9 @@ static void write_dep_header(dep_info *dep) {
 		fatal("redo: failed to open %s", dep->path);
 
 	char buf[60];
-	sprintf(buf, "%010u", dep->magic);
+	sprintf(buf, "%010u", atoi(getenv("REDO_MAGIC")));
 	buf[10] = '\t';
-	sha1_to_hex(dep->new_hash, buf+11);
+	sha1_to_hex(dep->hash, buf+11);
 	buf[51] = '\t';
 	memset(buf+52, '-', 7);
 	if (dep->flags & DEP_SOURCE)
@@ -442,15 +441,13 @@ static void write_dep_header(dep_info *dep) {
 
 int update_target(const char *target, int ident) {
 	dep_info dep = {
-		.magic = atoi(getenv("REDO_MAGIC")),
 		.target = target,
 		.path = get_dep_path(target),
 	};
 
 	int retval = handle_ident(&dep, ident);
 	free(dep.path);
-	free(dep.old_hash);
-	free(dep.new_hash);
+	free(dep.hash);
 
 	return retval;
 }
@@ -500,16 +497,16 @@ static int handle_c(dep_info *dep) {
 			return build_target(dep);
 	}
 
-	if (magic == dep->magic)
+	if (magic == atoi(getenv("REDO_MAGIC")))
 		/* magic number matches */
 		return 1;
 
-	dep->old_hash = xmalloc(20);
+	unsigned char old_hash[20];
 	buf[51] = '\0';
-	hex_to_sha1(buf+11, dep->old_hash); /* TODO: error checking */
-	dep->new_hash = hash_file(dep->target);
+	hex_to_sha1(buf+11, old_hash); /* TODO: error checking */
+	dep->hash = hash_file(dep->target);
 
-	if (memcmp(dep->old_hash, dep->new_hash, 20))
+	if (memcmp(old_hash, dep->hash, 20))
 		return build_target(dep);
 
 	char *ptr;
