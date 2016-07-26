@@ -1,6 +1,6 @@
 /* dbg.h
  *
- * Copyright (c) 2014 Tharre
+ * Copyright (c) 2014-2016 Tharre
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE file for details.
@@ -19,6 +19,12 @@
 #define _FILENAME __FILE__
 #endif
 
+#ifndef NDEBUG
+#define DEBUG 1
+#else
+#define DEBUG 0
+#endif
+
 /* helper functions which help in replacing the GNU extension ##__VA_ARGS__ */
 #define STRINGIFY(x) #x
 #define PREFIX(...) PREFIX_HELPER(_FILENAME, __LINE__, __VA_ARGS__)
@@ -34,11 +40,7 @@
 #define PREFIX_HELPER(f,l,...) "(" f ":" STRINGIFY(l) "): " __VA_ARGS__
 #endif
 
-#ifdef NDEBUG
-#define debug(...)
-#else
-#define debug(...) log_err(__VA_ARGS__)
-#endif
+#define debug(...) do { if (DEBUG) log_err(__VA_ARGS__); } while (0)
 
 #define assert_str_equal(a,b) ({ \
 	if (strcmp(a, b)) { \
