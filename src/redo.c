@@ -1,6 +1,6 @@
 /* redo.c
  *
- * Copyright (c) 2014 Tharre
+ * Copyright (c) 2014-2016 Tharre
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE file for details.
@@ -79,7 +79,7 @@ int main(int argc, char *argv[]) {
 			die("%s must be called inside a .do script\n", argv[0]);
 
 		if (ident == 'a')
-			add_dep(parent, parent, ident);
+			add_prereq(parent, parent, ident);
 		else
 			for (int i = 1; i < argc; ++i) {
 				do {
@@ -87,7 +87,7 @@ int main(int argc, char *argv[]) {
 				} while (!*temp);
 
 				update_target(*temp, ident);
-				add_dep(*temp, xbasename(parent), ident);
+				add_prereq(*temp, xbasename(parent), ident);
 
 				*temp = NULL;
 			}

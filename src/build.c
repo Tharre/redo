@@ -24,6 +24,7 @@
 #include "build.h"
 #include "util.h"
 #include "filepath.h"
+#include "DSV.h"
 #define _FILENAME "build.c"
 #include "dbg.h"
 
@@ -50,7 +51,7 @@ static char **parsecmd(char *cmd, size_t *i, size_t keep_free);
 static char *get_relpath(const char *target);
 static char *xrealpath(const char *path);
 static char *get_dep_path(const char *target);
-static void write_dep_header(dep_info *dep);
+static void write_dep_information(dep_info *dep);
 static int handle_ident(dep_info *dep, int ident);
 static int handle_c(dep_info *dep);
 static unsigned char *hash_file(const char *target);
@@ -70,7 +71,7 @@ static int build_target(dep_info *dep) {
 			if (!dep->hash)
 				dep->hash = hash_file(dep->target);
 
-			write_dep_header(dep);
+			write_dep_information(dep);
 			goto exit;
 		}
 
@@ -85,6 +86,12 @@ static int build_target(dep_info *dep) {
 	/* remove old dependency record */
 	if (remove(dep->path) && errno != ENOENT)
 		fatal("redo: failed to remove %s", dep->path);
+
+	char *prereq = concat(2, dep->path, ".prereq");
+	if (remove(prereq) && errno != ENOENT)
+		fatal("redo: failed to remove %s", prereq);
+
+	free(prereq);
 
 	char *temp_output = concat(2, dep->target, ".redoing.tmp");
 
@@ -154,7 +161,7 @@ static int build_target(dep_info *dep) {
 
 		free(old_hash);
 
-		write_dep_header(dep);
+		write_dep_information(dep);
 	} else {
 		if (remove(temp_output) && errno != ENOENT)
 			fatal("redo: failed to remove %s", temp_output);
@@ -168,16 +175,16 @@ static int build_target(dep_info *dep) {
 
 	if (!fexists(dep2.path)) {
 		dep2.hash = hash_file(doscripts->chosen);
-		write_dep_header(&dep2);
+		write_dep_information(&dep2);
 		free(dep2.hash);
 	}
 	free(dep2.path);
 
-	add_dep(doscripts->chosen, dep->target, 'c');
+	add_prereq(doscripts->chosen, dep->target, 'c');
 
 	/* redo-ifcreate on specific if general was chosen */
 	if (doscripts->general == doscripts->chosen)
-		add_dep(doscripts->specific, dep->target, 'e');
+		add_prereq(doscripts->specific, dep->target, 'e');
 
 	free(temp_output);
 exit:
@@ -332,38 +339,24 @@ static char *get_dep_path(const char *target) {
 }
 
 /* Declare that `parent` depends on `target`. */
-void add_dep(const char *target, const char *parent, int ident) {
-	char *dep_path = get_dep_path(parent);
+void add_prereq(const char *target, const char *parent, int ident) {
+	char *base_path = get_dep_path(parent);
+	char *dep_path = concat(2, base_path, ".prereq");
 
-	if (strchr(target, '\n'))
-		die("redo: newlines in targets are not supported\n");
-
-	int fd = open(dep_path, O_WRONLY | O_APPEND);
-	if (fd < 0) {
-		if (errno != ENOENT)
-			fatal("redo: failed to open %s", dep_path);
-
-		/* no dependency record was found, so we create one */
-		fd = open(dep_path, O_WRONLY | O_APPEND | O_CREAT, 0644);
-		if (fd < 0)
-			fatal("redo: failed to open %s", dep_path);
-	}
-
-	char garbage[HEADERSIZE];
-	memset(garbage, 'Z', HEADERSIZE);
-
-	/* skip header */
-	if (lseek(fd, 0, SEEK_END) < (off_t) HEADERSIZE)
-		pwrite(fd, garbage, HEADERSIZE, 0);
+	int fd = open(dep_path, O_WRONLY | O_APPEND | O_CREAT, 0644);
+	if (fd < 0)
+		fatal("redo: failed to open %s", dep_path);
 
 	char *reltarget = get_relpath(target);
-	int bufsize = strlen(reltarget) + 3;
+	size_t bufsize = strlen(reltarget)*2 + 3;
 	char *buf = xmalloc(bufsize);
+
 	buf[0] = ident;
-	buf[1] = '\t';
-	strcpy(buf+2, reltarget);
-	buf[bufsize-1] = '\n';
-	if (write(fd, buf, bufsize) < bufsize)
+	buf[1] = ':';
+	size_t encoded_len = encode_string(buf+2, reltarget);
+	buf[encoded_len+2] = '\n';
+
+	if (write(fd, buf, encoded_len+3) < (ssize_t) encoded_len+3)
 		fatal("redo: failed to write to %s", dep_path);
 
 	if (close(fd))
@@ -372,6 +365,7 @@ void add_dep(const char *target, const char *parent, int ident) {
 	free(buf);
 	free(reltarget);
 	free(dep_path);
+	free(base_path);
 }
 
 /* Hash the target file, returning a pointer to the heap allocated hash. */
@@ -416,26 +410,22 @@ static void hex_to_sha1(const char *s, unsigned char *sha1) {
 }
 
 /* Write the dependency information into the specified path. */
-static void write_dep_header(dep_info *dep) {
-	mode_t mode = S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH;
-	int out = open(dep->path, O_WRONLY | O_CREAT, mode);
-	if (out < 0)
+static void write_dep_information(dep_info *dep) {
+	FILE *fd = fopen(dep->path, "w+");
+	if (!fd)
 		fatal("redo: failed to open %s", dep->path);
 
-	char buf[60];
-	sprintf(buf, "%010u", atoi(getenv("REDO_MAGIC")));
-	buf[10] = '\t';
-	sha1_to_hex(dep->hash, buf+11);
-	buf[51] = '\t';
-	memset(buf+52, '-', 7);
-	if (dep->flags & DEP_SOURCE)
-		buf[52] = 'S';
-	buf[59] = '\n';
+	char hash[41];
+	sha1_to_hex(dep->hash, hash);
+	hash[40] = '\0';
+	char *flags = dep->flags & DEP_SOURCE ? "s" : "l";
 
-	if (write(out, buf, sizeof buf) < (ssize_t) sizeof buf)
-		fatal("redo: failed to write dependency record to '%s'", dep->path);
+	int magic = atoi(getenv("REDO_MAGIC"));
 
-	if (close(out))
+	if (fprintf(fd, "%s:%010u:%s\n", hash, magic, flags) < 0)
+		fatal("redo: failed to write to %s", dep->path);
+
+	if (fclose(fd))
 		fatal("redo: failed to close %s", dep->path);
 }
 
@@ -471,85 +461,103 @@ static int handle_ident(dep_info *dep, int ident) {
 static int handle_c(dep_info *dep) {
 	FILE *fp = fopen(dep->path, "rb");
 	if (!fp) {
-		if (errno == ENOENT)
+		if (errno == ENOENT) {
 			/* dependency record does not exist */
 			return build_target(dep);
+		} else {
+			fatal("redo: failed to open %s", dep->path);
+		}
+	}
+
+	int retval = 0;
+	struct dsv_ctx ctx;
+	dsv_init(&ctx, 3);
+
+	if (dsv_parse_file(&ctx, fp)) {
+		retval = build_target(dep);
+		goto exit;
+	}
+
+	errno = 0;
+	long magic = strtol(ctx.fields[1], NULL, 10);
+	if (errno) {
+		retval = build_target(dep);
+		goto exit;
+	}
+
+	if (!fexists(dep->target)) {
+		if (ctx.fields[2][0] == 's') {
+			/* target is a source and must not be rebuild */
+			retval = 1;
+			goto exit;
+		} else {
+			retval = build_target(dep);
+			goto exit;
+		}
+	}
+
+	if (magic == atoi(getenv("REDO_MAGIC"))) {
+		/* magic number matches */
+		retval = 1;
+		goto exit;
+	}
+
+	unsigned char old_hash[20];
+	hex_to_sha1(ctx.fields[0], old_hash); /* TODO: error checking */
+	dep->hash = hash_file(dep->target);
+
+	if (memcmp(old_hash, dep->hash, 20)) {
+		retval = build_target(dep);
+		goto exit;
+	}
+
+	for (size_t i = 0; i < ctx.fields_count; ++i)
+		free(ctx.fields[i]);
+
+	dsv_free(&ctx);
+	fclose(fp);
+
+
+	char *prereq_path = concat(2, dep->path, ".prereq");
+	fp = fopen(prereq_path, "rb");
+	free(prereq_path);
+	if (!fp) {
+		if (errno == ENOENT)
+			return 0;
 		else
 			fatal("redo: failed to open %s", dep->path);
 	}
 
-	char buf[FILENAME_MAX];
+	dsv_init(&ctx, 2);
 
-	if (fread(buf, 1, HEADERSIZE, fp) < HEADERSIZE)
-		fatal("redo: failed to read %zu bytes from %s", HEADERSIZE, dep->path);
-
-	errno = 0;
-	buf[10] = '\0';
-	long magic = strtol(buf, NULL, 10);
-	if (errno)
-		return build_target(dep);
-
-	if (!fexists(dep->target)) {
-		if (buf[52] == 'S') /* source flag set */
-			/* target is a source and must not be rebuild */
-			return 1;
-		else
-			return build_target(dep);
-	}
-
-	if (magic == atoi(getenv("REDO_MAGIC")))
-		/* magic number matches */
-		return 1;
-
-	unsigned char old_hash[20];
-	buf[51] = '\0';
-	hex_to_sha1(buf+11, old_hash); /* TODO: error checking */
-	dep->hash = hash_file(dep->target);
-
-	if (memcmp(old_hash, dep->hash, 20))
-		return build_target(dep);
-
-	char *ptr;
-	char *root = getenv("REDO_ROOT");
-	bool rebuild = false;
-
-	while (!feof(fp)) {
-		ptr = buf;
-
-		size_t read = fread(buf, 1, sizeof buf, fp);
-		if (ferror(fp))
-			fatal("redo: failed to read %zu bytes from descriptor", sizeof buf);
-
-		for (size_t i = 0; i < read; ++i) {
-			if (buf[i] != '\n')
-				continue;
-			buf[i] = '\0';
-			if (!is_absolute(&ptr[2])) {
-				/* if our path is relative we need to prefix it with the
-				   root project directory or the path will be invalid */
-				char *abs = concat(3, root, "/", &ptr[2]);
-				if (update_target(abs, ptr[0]))
-					rebuild = true;
-
-				free(abs);
-			} else {
-				if (update_target(&ptr[2], ptr[0]))
-					rebuild = true;
-			}
-			ptr = &buf[i+1];
+	while (!dsv_parse_file(&ctx, fp)) {
+		char *target, *abs = NULL;
+		if (!is_absolute(ctx.fields[1])) {
+			abs = concat(3, getenv("REDO_ROOT"), "/", ctx.fields[1]);
+			target = abs;
+		} else {
+			target = ctx.fields[1];
 		}
 
-		if (read && buf[read-1] != '\n') {
-			if (buf != ptr)
-				memmove(buf, ptr, buf-ptr + sizeof buf);
-			else
-				die("redo: dependency record contains insanely long paths\n");
+		if (update_target(target, ctx.fields[0][0])) {
+			retval = build_target(dep);
+			free(abs);
+			goto exit;
 		}
+
+		free(abs);
+		free(ctx.fields[0]);
+		free(ctx.fields[1]);
 	}
 
+	goto exit2;
+
+exit:
+	for (size_t i = 0; i < ctx.fields_count; ++i)
+		free(ctx.fields[i]);
+exit2:
+	dsv_free(&ctx);
 	fclose(fp);
-	if (rebuild)
-		return build_target(dep);
 
-	return 0;
+	return retval;
 }
