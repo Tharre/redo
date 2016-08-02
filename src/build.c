@@ -475,7 +475,7 @@ static int handle_c(dep_info *dep) {
 
 	if (dsv_parse_file(&ctx, fp)) {
 		retval = build_target(dep);
-		goto exit;
+		goto exit2;
 	}
 
 	errno = 0;

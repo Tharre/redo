@@ -117,17 +117,18 @@ int dsv_parse_next_line(struct dsv_ctx *context, const char *src, size_t len) {
 			break;
 		}
 
+		if (i >= context->fields_count) {
+			debug("DSV: too many fields\n");
+			context->status = E_TOO_MANY_FIELDS;
+			goto error;
+		}
+
 		char *buf = xmalloc(size+1);
 		decode_string(buf, start, size+1);
 		context->fields[i] = buf;
 
 		start += size + 1;
 		++i;
-		if (i > context->fields_count) {
-			debug("DSV: too many fields\n");
-			context->status = E_TOO_MANY_FIELDS;
-			goto error;
-		}
 	}
 
 	if (i+1 < context->fields_count) {
