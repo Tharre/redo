@@ -6,7 +6,7 @@
  * of the MIT license.  See the LICENSE file for details.
  */
 
-#define _XOPEN_SOURCE 600
+#define _XOPEN_SOURCE 700
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,6 +17,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <time.h>
 
 #include <libgen.h> /* dirname(), basename() */
 
@@ -40,6 +41,7 @@ typedef struct dep_info {
 	const char *target;
 	char *path;
 	unsigned char *hash;
+	struct timespec ctime;
 	int32_t flags;
 #define DEP_SOURCE (1 << 1)
 } dep_info;
@@ -54,7 +56,7 @@ static char *get_dep_path(const char *target);
 static void write_dep_information(dep_info *dep);
 static int handle_ident(dep_info *dep, int ident);
 static int handle_c(dep_info *dep);
-static unsigned char *hash_file(const char *target);
+static void update_dep_info(dep_info *dep, const char *target);
 
 
 /* Build given target, using it's .do script. */
@@ -68,8 +70,8 @@ static int build_target(dep_info *dep) {
 			/* if our target file has no .do script associated but exists,
 			   then we treat it as a source */
 			dep->flags |= DEP_SOURCE;
-			if (!dep->hash)
-				dep->hash = hash_file(dep->target);
+			if (!dep->hash) /* if the hash was retrieved, ctime was too */
+				update_dep_info(dep, dep->target);
 
 			write_dep_information(dep);
 			goto exit;
@@ -155,7 +157,7 @@ static int build_target(dep_info *dep) {
 
 		/* recalculate hash after successful build */
 		unsigned char *old_hash = dep->hash;
-		dep->hash = hash_file(dep->target);
+		update_dep_info(dep, dep->target);
 		if (old_hash)
 			retval = memcmp(dep->hash, old_hash, 20);
 
@@ -174,7 +176,7 @@ static int build_target(dep_info *dep) {
 	};
 
 	if (!fexists(dep2.path)) {
-		dep2.hash = hash_file(doscripts->chosen);
+		update_dep_info(&dep2, doscripts->chosen);
 		write_dep_information(&dep2);
 		free(dep2.hash);
 	}
@@ -369,11 +371,7 @@ void add_prereq(const char *target, const char *parent, int ident) {
 }
 
 /* Hash the target file, returning a pointer to the heap allocated hash. */
-static unsigned char *hash_file(const char *target) {
-	FILE *in = fopen(target, "rb");
-	if (!in)
-		fatal("redo: failed to open %s", target);
-
+static unsigned char *hash_file(FILE *fp) {
 	unsigned char *hash = xmalloc(20);
 
 	SHA_CTX context;
@@ -381,15 +379,29 @@ static unsigned char *hash_file(const char *target) {
 	size_t read;
 
 	SHA1_Init(&context);
-	while ((read = fread(data, 1, sizeof data, in)))
+	while ((read = fread(data, 1, sizeof data, fp)))
 		SHA1_Update(&context, data, read);
 
-	if (ferror(in))
-		fatal("redo: failed to read from %s", target);
+	if (ferror(fp))
+		fatal("redo: failed to read data");
 	SHA1_Final(hash, &context);
-	fclose(in);
 
 	return hash;
+}
+
+/* Update hash & ctime information stored in the given dep_info struct */
+static void update_dep_info(dep_info *dep, const char *target) {
+	FILE *fp = fopen(target, "rb");
+	if (!fp)
+		fatal("redo: failed to open %s", target);
+
+	dep->hash = hash_file(fp);
+	struct stat st;
+	if (fstat(fileno(fp), &st))
+		fatal("redo: failed to aquire stat() %s", target);
+
+	dep->ctime = st.st_ctim;
+	fclose(fp);
 }
 
 static void sha1_to_hex(const unsigned char *sha1, char *buf) {
@@ -422,7 +434,9 @@ static void write_dep_information(dep_info *dep) {
 
 	int magic = atoi(getenv("REDO_MAGIC"));
 
-	if (fprintf(fd, "%s:%010u:%s\n", hash, magic, flags) < 0)
+	/* TODO: casting time_t to long long is probably not entirely portable */
+	if (fprintf(fd, "%s:%lld.%.9ld:%010u:%s\n", hash,
+			(long long)dep->ctime.tv_sec, dep->ctime.tv_nsec, magic, flags) < 0)
 		fatal("redo: failed to write to %s", dep->path);
 
 	if (fclose(fd))
@@ -459,8 +473,8 @@ static int handle_ident(dep_info *dep, int ident) {
 }
 
 static int handle_c(dep_info *dep) {
-	FILE *fp = fopen(dep->path, "rb");
-	if (!fp) {
+	FILE *pathfd = fopen(dep->path, "rb");
+	if (!pathfd) {
 		if (errno == ENOENT) {
 			/* dependency record does not exist */
 			return build_target(dep);
@@ -471,22 +485,25 @@ static int handle_c(dep_info *dep) {
 
 	int retval = 0;
 	struct dsv_ctx ctx;
-	dsv_init(&ctx, 3);
+	dsv_init(&ctx, 4);
 
-	if (dsv_parse_file(&ctx, fp)) {
+	if (dsv_parse_file(&ctx, pathfd)) {
 		retval = build_target(dep);
 		goto exit2;
 	}
 
 	errno = 0;
-	long magic = strtol(ctx.fields[1], NULL, 10);
+	long magic = strtol(ctx.fields[2], NULL, 10);
 	if (errno) {
 		retval = build_target(dep);
 		goto exit;
 	}
 
-	if (!fexists(dep->target)) {
-		if (ctx.fields[2][0] == 's') {
+	FILE *targetfd = fopen(dep->target, "rb");
+	if (!targetfd) {
+		if (errno != ENOENT) {
+			fatal("redo: failed to open %s\n", dep->target);
+		} else if (ctx.fields[3][0] == 's') {
 			/* target is a source and must not be rebuild */
 			retval = 1;
 			goto exit;
@@ -498,30 +515,53 @@ static int handle_c(dep_info *dep) {
 
 	if (magic == atoi(getenv("REDO_MAGIC"))) {
 		/* magic number matches */
+		fclose(targetfd);
 		retval = 1;
 		goto exit;
 	}
 
-	unsigned char old_hash[20];
-	hex_to_sha1(ctx.fields[0], old_hash); /* TODO: error checking */
-	dep->hash = hash_file(dep->target);
-
-	if (memcmp(old_hash, dep->hash, 20)) {
+	struct stat curr_st;
+	if (sscanf(ctx.fields[1], "%lld.%ld", (long long*)&dep->ctime.tv_sec,
+				&dep->ctime.tv_nsec) < 2) {
+		fclose(targetfd);
 		retval = build_target(dep);
 		goto exit;
+	}
+
+	if (fstat(fileno(targetfd), &curr_st))
+		fatal("redo: failed to stat() %s", dep->target);
+
+	if (dep->ctime.tv_sec != curr_st.st_ctim.tv_sec
+			|| dep->ctime.tv_nsec != curr_st.st_ctim.tv_nsec) {
+		/* ctime doesn't match */
+		dep->ctime = curr_st.st_ctim;
+
+		/* so check the hash */
+		unsigned char old_hash[20];
+		hex_to_sha1(ctx.fields[0], old_hash); /* TODO: error checking */
+		dep->hash = hash_file(targetfd);
+
+		if (memcmp(old_hash, dep->hash, 20)) {
+			fclose(targetfd);
+			retval = build_target(dep);
+			goto exit;
+		}
+
+		/* update ctime hash */
+		write_dep_information(dep);
 	}
 
 	for (size_t i = 0; i < ctx.fields_count; ++i)
 		free(ctx.fields[i]);
 
 	dsv_free(&ctx);
-	fclose(fp);
-
+	fclose(targetfd);
+	fclose(pathfd);
 
 	char *prereq_path = concat(2, dep->path, ".prereq");
-	fp = fopen(prereq_path, "rb");
+	pathfd = fopen(prereq_path, "rb");
 	free(prereq_path);
-	if (!fp) {
+	if (!pathfd) {
 		if (errno == ENOENT)
 			return 0;
 		else
@@ -530,7 +570,7 @@ static int handle_c(dep_info *dep) {
 
 	dsv_init(&ctx, 2);
 
-	while (!dsv_parse_file(&ctx, fp)) {
+	while (!dsv_parse_file(&ctx, pathfd)) {
 		char *target, *abs = NULL;
 		if (!is_absolute(ctx.fields[1])) {
 			abs = concat(3, getenv("REDO_ROOT"), "/", ctx.fields[1]);
@@ -557,7 +597,7 @@ exit:
 		free(ctx.fields[i]);
 exit2:
 	dsv_free(&ctx);
-	fclose(fp);
+	fclose(pathfd);
 
 	return retval;
 }
