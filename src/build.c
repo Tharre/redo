@@ -404,6 +404,7 @@ static void update_dep_info(dep_info *dep, const char *target) {
 	fclose(fp);
 }
 
+/* Requires a buffer of at least 20*2+1 = 41 bytes */
 static void sha1_to_hex(const unsigned char *sha1, char *buf) {
 	static const char hex[] = "0123456789abcdef";
 
@@ -412,6 +413,8 @@ static void sha1_to_hex(const unsigned char *sha1, char *buf) {
 		*pos++ = hex[sha1[i] >> 4];
 		*pos = hex[sha1[i] & 0xf];
 	}
+
+	buf[40] = '\0';
 }
 
 static void hex_to_sha1(const char *s, unsigned char *sha1) {
@@ -429,7 +432,6 @@ static void write_dep_information(dep_info *dep) {
 
 	char hash[41];
 	sha1_to_hex(dep->hash, hash);
-	hash[40] = '\0';
 	char *flags = dep->flags & DEP_SOURCE ? "s" : "l";
 
 	int magic = atoi(getenv("REDO_MAGIC"));
