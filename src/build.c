@@ -473,8 +473,12 @@ static int handle_ident(dep_info *dep, int ident) {
 }
 
 static int handle_c(dep_info *dep) {
-	FILE *pathfd = fopen(dep->path, "rb");
-	if (!pathfd) {
+	struct dsv_ctx ctx_dep, ctx_prereq;
+	int retval = 0;
+
+	/* check if the dependency record exists and is valid */
+	FILE *depfd = fopen(dep->path, "rb");
+	if (!depfd) {
 		if (errno == ENOENT) {
 			/* dependency record does not exist */
 			return build_target(dep);
@@ -483,36 +487,34 @@ static int handle_c(dep_info *dep) {
 		}
 	}
 
-	int retval = 0;
-	struct dsv_ctx ctx;
-	dsv_init(&ctx, 4);
+	dsv_init(&ctx_dep, 4);
 
-	if (dsv_parse_file(&ctx, pathfd)) {
+	if (dsv_parse_file(&ctx_dep, depfd)) {
+		/* parsing failed */
 		retval = build_target(dep);
-		goto exit2;
+		goto exit;
 	}
-
 
 	FILE *targetfd = fopen(dep->target, "rb");
 	if (!targetfd) {
 		if (errno != ENOENT) {
-			fatal("redo: failed to open %s\n", dep->target);
-		} else if (ctx.fields[3][0] == 's') {
+			fatal("redo: failed to open %s", dep->target);
+		} else if (ctx_dep.fields[3][0] == 's') {
 			/* target is a source and must not be rebuild */
 			retval = 1;
-			goto exit;
+			goto exit2;
 		} else {
 			retval = build_target(dep);
-			goto exit;
+			goto exit2;
 		}
 	}
 
 	struct stat curr_st;
-	if (sscanf(ctx.fields[1], "%lld.%ld", (long long*)&dep->ctime.tv_sec,
+	if (sscanf(ctx_dep.fields[1], "%lld.%ld", (long long*)&dep->ctime.tv_sec,
 				&dep->ctime.tv_nsec) < 2) {
-		fclose(targetfd);
+		/* ctime parsing failed */
 		retval = build_target(dep);
-		goto exit;
+		goto exit3;
 	}
 
 	if (fstat(fileno(targetfd), &curr_st))
@@ -525,66 +527,63 @@ static int handle_c(dep_info *dep) {
 
 		/* so check the hash */
 		unsigned char old_hash[20];
-		hex_to_sha1(ctx.fields[0], old_hash); /* TODO: error checking */
+		hex_to_sha1(ctx_dep.fields[0], old_hash); /* TODO: error checking */
 		dep->hash = hash_file(targetfd);
 
 		if (memcmp(old_hash, dep->hash, 20)) {
-			fclose(targetfd);
+			/* target hash doesn't match */
 			retval = build_target(dep);
-			goto exit;
+			goto exit3;
 		}
 
 		/* update ctime hash */
 		write_dep_information(dep);
 	}
 
-	for (size_t i = 0; i < ctx.fields_count; ++i)
-		free(ctx.fields[i]);
-
-	dsv_free(&ctx);
-	fclose(targetfd);
-	fclose(pathfd);
-
+	/* make sure all prereq dependencies are met */
 	char *prereq_path = concat(2, dep->path, ".prereq");
-	pathfd = fopen(prereq_path, "rb");
+	FILE *prereqfd = fopen(prereq_path, "rb");
 	free(prereq_path);
-	if (!pathfd) {
-		if (errno == ENOENT)
-			return 0;
-		else
-			fatal("redo: failed to open %s", dep->path);
+	if (!prereqfd) {
+		if (errno != ENOENT)
+			fatal("redo: failed to open %s", prereq_path);
+
+		/* no .prereq file exists; so we don't do anything */
+		goto exit3;
 	}
 
-	dsv_init(&ctx, 2);
+	dsv_init(&ctx_prereq, 2);
 
-	while (!dsv_parse_file(&ctx, pathfd)) {
+	while (!dsv_parse_file(&ctx_prereq, prereqfd)) {
 		char *target, *abs = NULL;
-		if (!is_absolute(ctx.fields[1])) {
-			abs = concat(3, getenv("REDO_ROOT"), "/", ctx.fields[1]);
+		if (!is_absolute(ctx_prereq.fields[1])) {
+			abs = concat(3, getenv("REDO_ROOT"), "/", ctx_prereq.fields[1]);
 			target = abs;
 		} else {
-			target = ctx.fields[1];
+			target = ctx_prereq.fields[1];
 		}
 
-		if (update_target(target, ctx.fields[0][0])) {
-			retval = build_target(dep);
-			free(abs);
-			goto exit;
-		}
+		int outofdate = update_target(target, ctx_prereq.fields[0][0]);
 
 		free(abs);
-		free(ctx.fields[0]);
-		free(ctx.fields[1]);
+		free(ctx_prereq.fields[0]);
+		free(ctx_prereq.fields[1]);
+
+		if (outofdate) {
+			retval = build_target(dep);
+			break;
+		}
 	}
 
-	goto exit2;
-
-exit:
-	for (size_t i = 0; i < ctx.fields_count; ++i)
-		free(ctx.fields[i]);
+	dsv_free(&ctx_prereq);
+	fclose(prereqfd);
+exit3:
+	fclose(targetfd);
 exit2:
-	dsv_free(&ctx);
-	fclose(pathfd);
-
+	for (size_t i = 0; i < ctx_dep.fields_count; ++i)
+		free(ctx_dep.fields[i]);
+exit:
+	dsv_free(&ctx_dep);
+	fclose(depfd);
 	return retval;
 }
