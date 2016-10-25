@@ -520,21 +520,26 @@ static int handle_c(dep_info *dep) {
 	if (fstat(fileno(targetfd), &curr_st))
 		fatal("redo: failed to stat() %s", dep->target);
 
+	/* store the hash now, as build_target() will need it for comparison */
+	unsigned char *old_hash = xmalloc(20);
+	hex_to_sha1(ctx_dep.fields[0], old_hash); /* TODO: error checking */
+	dep->hash = old_hash;
+
 	if (dep->ctime.tv_sec != curr_st.st_ctim.tv_sec
 			|| dep->ctime.tv_nsec != curr_st.st_ctim.tv_nsec) {
 		/* ctime doesn't match */
 		dep->ctime = curr_st.st_ctim;
 
 		/* so check the hash */
-		unsigned char old_hash[20];
-		hex_to_sha1(ctx_dep.fields[0], old_hash); /* TODO: error checking */
 		dep->hash = hash_file(targetfd);
 
 		if (memcmp(old_hash, dep->hash, 20)) {
 			/* target hash doesn't match */
+			free(old_hash);
 			retval = build_target(dep);
 			goto exit3;
 		}
+		free(old_hash);
 
 		/* update ctime hash */
 		write_dep_information(dep);
