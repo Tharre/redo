@@ -492,12 +492,6 @@ static int handle_c(dep_info *dep) {
 		goto exit2;
 	}
 
-	errno = 0;
-	long magic = strtol(ctx.fields[2], NULL, 10);
-	if (errno) {
-		retval = build_target(dep);
-		goto exit;
-	}
 
 	FILE *targetfd = fopen(dep->target, "rb");
 	if (!targetfd) {
@@ -511,13 +505,6 @@ static int handle_c(dep_info *dep) {
 			retval = build_target(dep);
 			goto exit;
 		}
-	}
-
-	if (magic == atoi(getenv("REDO_MAGIC"))) {
-		/* magic number matches */
-		fclose(targetfd);
-		retval = 1;
-		goto exit;
 	}
 
 	struct stat curr_st;

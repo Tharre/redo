@@ -30,7 +30,6 @@ EOF
 test_expect_success "redo shortcuts" "
     echo "s1" > s &&
     redo a &&
-    sleep 1 && # TODO: remove this as soon as REDO_MAGIC is fixed
     echo "s2" > s &&
     redo a
 "
