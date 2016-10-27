@@ -483,6 +483,7 @@ static int handle_c(dep_info *dep) {
 	if (!depfd) {
 		if (errno == ENOENT) {
 			/* dependency record does not exist */
+			log_warn("%s ood: dependency record doesn't exist\n", dep->target);
 			return build_target(dep);
 		} else {
 			fatal("redo: failed to open %s", dep->path);
@@ -493,6 +494,7 @@ static int handle_c(dep_info *dep) {
 
 	if (dsv_parse_file(&ctx_dep, depfd)) {
 		/* parsing failed */
+		log_info("%s ood: parsing of dependency file failed\n", dep->target);
 		retval = build_target(dep);
 		goto exit;
 	}
@@ -506,6 +508,7 @@ static int handle_c(dep_info *dep) {
 			retval = 1;
 			goto exit2;
 		} else {
+			log_info("%s ood: target file nonexistent\n", dep->target);
 			retval = build_target(dep);
 			goto exit2;
 		}
@@ -515,6 +518,7 @@ static int handle_c(dep_info *dep) {
 	if (sscanf(ctx_dep.fields[1], "%lld.%ld", (long long*)&dep->ctime.tv_sec,
 				&dep->ctime.tv_nsec) < 2) {
 		/* ctime parsing failed */
+		log_info("%s ood: ctime parsing failed\n", dep->target);
 		retval = build_target(dep);
 		goto exit3;
 	}
@@ -537,6 +541,7 @@ static int handle_c(dep_info *dep) {
 
 		if (memcmp(old_hash, dep->hash, 20)) {
 			/* target hash doesn't match */
+			log_info("%s ood: hashes don't match\n", dep->target);
 			free(old_hash);
 			retval = build_target(dep);
 			goto exit3;
@@ -577,6 +582,7 @@ static int handle_c(dep_info *dep) {
 		free(ctx_prereq.fields[1]);
 
 		if (outofdate) {
+			log_info("%s ood: subtarget is ood\n", dep->target);
 			retval = build_target(dep);
 			break;
 		}

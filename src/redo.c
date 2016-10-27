@@ -46,6 +46,8 @@ void prepare_env() {
 		fatal("redo: failed to setenv() REDO_MAGIC to %s", magic_str);
 }
 
+int DBG_LVL;
+
 int main(int argc, char *argv[]) {
 	srand(time(NULL));
 	char *argv_base = xbasename(argv[0]);
@@ -77,6 +79,11 @@ int main(int argc, char *argv[]) {
 
 		if (!parent || !root || !magic)
 			die("%s must be called inside a .do script\n", argv[0]);
+
+		/* set DBG_LVL (for dbg.h) */
+		char *env = getenv("REDO_DEBUG");
+		if (env)
+			DBG_LVL = atoi(env);
 
 		if (ident == 'a')
 			add_prereq(parent, parent, ident);
