@@ -555,13 +555,12 @@ static int handle_c(dep_info *dep) {
 	/* make sure all prereq dependencies are met */
 	char *prereq_path = concat(2, dep->path, ".prereq");
 	FILE *prereqfd = fopen(prereq_path, "rb");
-	free(prereq_path);
 	if (!prereqfd) {
 		if (errno != ENOENT)
 			fatal("redo: failed to open %s", prereq_path);
 
 		/* no .prereq file exists; so we don't do anything */
-		goto exit3;
+		goto exit4;
 	}
 
 	dsv_init(&ctx_prereq, 2);
@@ -590,6 +589,8 @@ static int handle_c(dep_info *dep) {
 
 	dsv_free(&ctx_prereq);
 	fclose(prereqfd);
+exit4:
+	free(prereq_path);
 exit3:
 	fclose(targetfd);
 exit2:
