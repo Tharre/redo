@@ -384,25 +384,6 @@ void add_prereq_path(const char *target, const char *parent, int ident) {
 	free(reltarget);
 }
 
-/* Hash the target file, returning a pointer to the heap allocated hash. */
-static unsigned char *hash_file(FILE *fp) {
-	unsigned char *hash = xmalloc(20);
-
-	SHA_CTX context;
-	unsigned char data[8192];
-	size_t read;
-
-	SHA1_Init(&context);
-	while ((read = fread(data, 1, sizeof data, fp)))
-		SHA1_Update(&context, data, read);
-
-	if (ferror(fp))
-		fatal("redo: failed to read data");
-	SHA1_Final(hash, &context);
-
-	return hash;
-}
-
 /* Update hash & ctime information stored in the given dep_info struct */
 static void update_dep_info(dep_info *dep, const char *target) {
 	FILE *fp = fopen(target, "rb");
@@ -416,26 +397,6 @@ static void update_dep_info(dep_info *dep, const char *target) {
 
 	dep->ctime = st.st_ctim;
 	fclose(fp);
-}
-
-/* Requires a buffer of at least 20*2+1 = 41 bytes */
-static void sha1_to_hex(const unsigned char *sha1, char *buf) {
-	static const char hex[] = "0123456789abcdef";
-
-	for (int i = 0; i < 20; ++i) {
-		char *pos = buf + i*2;
-		*pos++ = hex[sha1[i] >> 4];
-		*pos = hex[sha1[i] & 0xf];
-	}
-
-	buf[40] = '\0';
-}
-
-static void hex_to_sha1(const char *s, unsigned char *sha1) {
-	static const char hex[] = "0123456789abcdef";
-
-	for (; *s; s += 2, ++sha1)
-		*sha1 = ((strchr(hex, *s) - hex) << 4) + strchr(hex, *(s+1)) - hex;
 }
 
 /* Write the dependency information into the specified path. */
