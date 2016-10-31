@@ -94,8 +94,7 @@ int main(int argc, char *argv[]) {
 				} while (!*temp);
 
 				update_target(*temp, ident);
-				add_prereq(*temp, xbasename(parent), ident);
-
+				add_prereq_path(*temp, xbasename(parent), ident);
 				*temp = NULL;
 			}
 	}

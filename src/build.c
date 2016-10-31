@@ -182,11 +182,11 @@ static int build_target(dep_info *dep) {
 	}
 	free(dep2.path);
 
-	add_prereq(doscripts->chosen, dep->target, 'c');
+	add_prereq_path(doscripts->chosen, dep->target, 'c');
 
 	/* redo-ifcreate on specific if general was chosen */
 	if (doscripts->general == doscripts->chosen)
-		add_prereq(doscripts->specific, dep->target, 'e');
+		add_prereq_path(doscripts->specific, dep->target, 'e');
 
 	free(temp_output);
 exit:
@@ -340,7 +340,13 @@ static char *get_dep_path(const char *target) {
 	return dep_path;
 }
 
-/* Declare that `parent` depends on `target`. */
+/* Declare that parent depends on target in the specific way ident.
+ * Parent must be a path pointing to a (maybe non-existent) file in a valid,
+ * exisiting directory. Target can be any string.
+ * This relation is saved in the dependency store like this:
+ * .redo/{abs,rel}/<parent>.prereq:
+ *     <ident>:<target>
+ */
 void add_prereq(const char *target, const char *parent, int ident) {
 	char *base_path = get_dep_path(parent);
 	char *dep_path = concat(2, base_path, ".prereq");
@@ -349,25 +355,33 @@ void add_prereq(const char *target, const char *parent, int ident) {
 	if (fd < 0)
 		fatal("redo: failed to open %s", dep_path);
 
-	char *reltarget = get_relpath(target);
-	size_t bufsize = strlen(reltarget)*2 + 3;
+	size_t bufsize = strlen(target)*2 + 3;
 	char *buf = xmalloc(bufsize);
 
 	buf[0] = ident;
 	buf[1] = ':';
-	size_t encoded_len = encode_string(buf+2, reltarget);
-	buf[encoded_len+2] = '\n';
+	size_t encoded_len = encode_string(buf+2, target) + 3;
+	buf[encoded_len-1] = '\n';
 
-	if (write(fd, buf, encoded_len+3) < (ssize_t) encoded_len+3)
+	if (write(fd, buf, encoded_len) < (ssize_t) encoded_len)
 		fatal("redo: failed to write to %s", dep_path);
 
 	if (close(fd))
 		fatal("redo: failed to close %s", dep_path);
 
 	free(buf);
-	free(reltarget);
 	free(dep_path);
 	free(base_path);
+}
+
+/* Works like add_prereq(), except that it uses the relative path of target to
+ * REDO_ROOT instead of just the target. Target must be a path pointing to a
+ * (maybe non-existant) file in a valid existing directory.
+ */
+void add_prereq_path(const char *target, const char *parent, int ident) {
+	char *reltarget = get_relpath(target);
+	add_prereq(reltarget, parent, ident);
+	free(reltarget);
 }
 
 /* Hash the target file, returning a pointer to the heap allocated hash. */

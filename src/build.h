@@ -12,6 +12,7 @@
 #include <stdbool.h>
 
 extern void add_prereq(const char *target, const char *parent, int ident);
+extern void add_prereq_path(const char *target, const char *parent, int ident);
 extern int update_target(const char *target, int ident);
 
 #endif
