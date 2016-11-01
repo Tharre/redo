@@ -442,6 +442,9 @@ static int handle_ident(dep_info *dep, int ident) {
 			return build_target(dep);
 
 		return 0;
+	case 's':
+		debug("Redo-stamp: %s\n", dep->target);
+		return 1;
 	case 'c':
 		return handle_c(dep);
 	default:

@@ -20,5 +20,6 @@ sudo install out/redo /usr/local/bin
 sudo ln -sf /usr/local/bin/redo /usr/local/bin/redo-ifchange
 sudo ln -sf /usr/local/bin/redo /usr/local/bin/redo-ifcreate
 sudo ln -sf /usr/local/bin/redo /usr/local/bin/redo-always
+sudo ln -sf /usr/local/bin/redo /usr/local/bin/redo-stamp
 
 echo "Finished compiling"

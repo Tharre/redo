@@ -69,6 +69,8 @@ int main(int argc, char *argv[]) {
 			ident = 'e';
 		else if (!strcmp(argv_base, "redo-always"))
 			ident = 'a';
+		else if (!strcmp(argv_base, "redo-stamp"))
+			ident = 's';
 		else
 			die("redo: argv set to unkown value\n");
 
@@ -85,9 +87,17 @@ int main(int argc, char *argv[]) {
 		if (env)
 			DBG_LVL = atoi(env);
 
-		if (ident == 'a')
+		if (ident == 'a') {
 			add_prereq(parent, parent, ident);
-		else
+		} else if (ident == 's') {
+			char buf[41];
+			unsigned char *hash = hash_file(stdin);
+
+			sha1_to_hex(hash, buf);
+			add_prereq(buf, parent, ident);
+
+			free(hash);
+		} else {
 			for (int i = 1; i < argc; ++i) {
 				do {
 					temp = &argv[rand() % (argc-1) + 1];
@@ -97,6 +107,7 @@ int main(int argc, char *argv[]) {
 				add_prereq_path(*temp, xbasename(parent), ident);
 				*temp = NULL;
 			}
+		}
 	}
 
 	return EXIT_SUCCESS;

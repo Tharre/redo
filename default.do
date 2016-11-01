@@ -7,6 +7,8 @@ export VERSION="pre-0.01"
 
 DESTDIR=${DESTDIR-/usr/local/bin}
 
+printf '%s' $REDO_TEST | redo-stamp
+
 if [ "$1" = "all" ]; then
 	redo-ifchange "$OUTDIR/redo"
 elif [ "$1" = "clean" ]; then
@@ -20,5 +22,6 @@ elif [ "$1" = "install" ]; then
 	ln -sf "$DESTDIR/redo" "$DESTDIR/redo-ifchange"
 	ln -sf "$DESTDIR/redo" "$DESTDIR/redo-ifcreate"
 	ln -sf "$DESTDIR/redo" "$DESTDIR/redo-always"
+	ln -sf "$DESTDIR/redo" "$DESTDIR/redo-stamp"
 	echo "Finished installing."
 fi
