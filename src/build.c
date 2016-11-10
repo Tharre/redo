@@ -29,8 +29,6 @@
 #define _FILENAME "build.c"
 #include "dbg.h"
 
-#define HEADERSIZE 60
-
 typedef struct do_attr {
 	char *specific;
 	char *general;
