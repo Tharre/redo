@@ -7,7 +7,7 @@ CC=${CC-$PREF}
 CFLAGS="-g -Wall -Wextra -std=c99 -pedantic -Wno-gnu-statement-expression $CFLAGS"
 LDFLAGS="$LDFLAGS"
 
-if [ ! -n "$SH_BUILD" ]; then
+if [ ! -n "$BOOTSTRAP_BUILD" ]; then
 	if [ -f "../config.local" ]; then
 		redo-ifchange ../config.local
 		. ../config.local
