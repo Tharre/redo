@@ -80,6 +80,9 @@ static int build_target(dep_info *dep) {
 	}
 
 	char *reltarget = get_relpath(dep->target);
+	if (!reltarget)
+		fatal("redo: failed to get realpath() of %s", reltarget);
+
 	printf("\033[32mredo  \033[1m\033[37m%s\033[0m\n", reltarget);
 	free(reltarget);
 
@@ -172,6 +175,9 @@ static int build_target(dep_info *dep) {
 		.target = dep->target,
 		.path = get_dep_path(doscripts->chosen),
 	};
+
+	if (!dep2.path)
+		fatal("redo: failed to get realpath() of %s", doscripts->chosen);
 
 	if (!fexists(dep2.path)) {
 		update_dep_info(&dep2, doscripts->chosen);
@@ -297,22 +303,24 @@ static char *xrealpath(const char *path) {
 	char *dirc = xstrdup(path);
 	char *dname = dirname(dirc);
 	char *absdir = realpath(dname, NULL);
-	if (!absdir)
-		return NULL;
-	char *abstarget = concat(3, absdir, "/", xbasename(path));
+
+	char *abstarget = NULL;
+	if (absdir)
+		abstarget = concat(3, absdir, "/", xbasename(path));
 
 	free(dirc);
 	free(absdir);
 	return abstarget;
 }
 
-/* Return the relative path against "REDO_ROOT" of target. */
+/* Return the relative path against "REDO_ROOT" of target. Returns NULL if
+   realpath() fails. */
 static char *get_relpath(const char *target) {
 	char *root = getenv("REDO_ROOT");
 	char *abstarget = xrealpath(target);
 
 	if (!abstarget)
-		fatal("redo: failed to get realpath() of %s", target);
+		return NULL;
 
 	char *path = xstrdup(relpath(abstarget, root));
 	free(abstarget);
@@ -322,14 +330,13 @@ static char *get_relpath(const char *target) {
 /* Return the dependency record path of target. */
 static char *get_dep_path(const char *target) {
 	char *root = getenv("REDO_ROOT");
-	char *reltarget = get_relpath(target);
 	char *dep_path;
+	char *reltarget = get_relpath(target);
+	if (!reltarget)
+		return NULL;
 
-	if (is_absolute(reltarget)) {
-		dep_path = concat(3, root, "/.redo/abs/", reltarget);
-	} else {
-		dep_path = concat(3, root, "/.redo/rel/", reltarget);
-	}
+	char *redodir = is_absolute(reltarget) ? "/.redo/abs/" : "/.redo/rel/";
+	dep_path = concat(3, root, redodir, reltarget);
 
 	/* create directory */
 	mkpath(dep_path, 0755); /* TODO: should probably be somewhere else */
@@ -347,6 +354,9 @@ static char *get_dep_path(const char *target) {
  */
 void add_prereq(const char *target, const char *parent, int ident) {
 	char *base_path = get_dep_path(parent);
+	if (!base_path)
+		fatal("redo: failed to get realpath() of %s", parent);
+
 	char *dep_path = concat(2, base_path, ".prereq");
 
 	int fd = open(dep_path, O_WRONLY | O_APPEND | O_CREAT, 0644);
@@ -378,6 +388,9 @@ void add_prereq(const char *target, const char *parent, int ident) {
  */
 void add_prereq_path(const char *target, const char *parent, int ident) {
 	char *reltarget = get_relpath(target);
+	if (!reltarget)
+		fatal("redo: failed to get realpath() of %s", target);
+
 	add_prereq(reltarget, parent, ident);
 	free(reltarget);
 }
@@ -423,6 +436,9 @@ int update_target(const char *target, int ident) {
 		.target = target,
 		.path = get_dep_path(target),
 	};
+
+	if (!dep.path)
+		return 1;
 
 	int retval = handle_ident(&dep, ident);
 	free(dep.path);
