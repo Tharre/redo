@@ -34,4 +34,24 @@ test_expect_success "redo shortcuts" "
     redo a
 "
 
+cat > "nonexistant.do" << 'EOF'
+#!/bin/sh -e
+redo-ifchange nonexistant2
+cat nonexistant2 > $3
+EOF
+
+cat > "nonexistant2.do" <<'EOF'
+#!/bin/sh -e
+[ -e "dir/b" ] && redo-ifchange dir/b && cat dir/b > $3
+echo "b" >> $3
+EOF
+
+test_expect_success "redo should succeed despite missing directories" "
+    mkdir dir &&
+    echo a > dir/b &&
+    redo nonexistant &&
+    rm -rf dir &&
+    redo nonexistant
+"
+
 test_done
