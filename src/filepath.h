@@ -1,6 +1,6 @@
 /* filepath.h
  *
- * Copyright (c) 2014 Tharre
+ * Copyright (c) 2014-2017 Tharre
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE file for details.
@@ -19,5 +19,6 @@ extern char *xbasename(const char *path);
 extern bool fexists(const char *target);
 extern off_t fsize(const char *fn);
 extern void mkpath(char *path, mode_t mode);
+extern char *make_abs(char *root, char *path);
 
 #endif

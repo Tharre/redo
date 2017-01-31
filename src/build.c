@@ -1,6 +1,6 @@
 /* build.c
  *
- * Copyright (c) 2014-2016 Tharre
+ * Copyright (c) 2014-2017 Tharre
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE file for details.
@@ -555,17 +555,10 @@ static int handle_c(dep_info *dep) {
 	dsv_init(&ctx_prereq, 2);
 
 	while (!dsv_parse_file(&ctx_prereq, prereqfd)) {
-		char *target, *abs = NULL;
-		if (!is_absolute(ctx_prereq.fields[1])) {
-			abs = concat(3, getenv("REDO_ROOT"), "/", ctx_prereq.fields[1]);
-			target = abs;
-		} else {
-			target = ctx_prereq.fields[1];
-		}
-
+		char *target = make_abs(getenv("REDO_ROOT"), ctx_prereq.fields[1]);
 		int outofdate = update_target(target, ctx_prereq.fields[0][0]);
 
-		free(abs);
+		free(target);
 		free(ctx_prereq.fields[0]);
 		free(ctx_prereq.fields[1]);
 

@@ -1,6 +1,6 @@
 /* filepath.c
  *
- * Copyright (c) 2014 Tharre
+ * Copyright (c) 2014-2017 Tharre
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE file for details.
@@ -124,4 +124,12 @@ void mkpath(char *path, mode_t mode) {
 
 		*p = '/';
 	}
+}
+
+/* Make path absolute by prepending root, if path isn't already absolute. */
+char *make_abs(char *root, char *path) {
+	if (!is_absolute(path))
+		return concat(3, root, "/", path);
+	else
+		return xstrdup(path);
 }
