@@ -10,6 +10,7 @@
 #define __FILEPATH_H__
 
 #include <stdbool.h>
+#include <sys/types.h>
 
 extern bool is_absolute(const char* path);
 extern char *remove_ext(const char *str);

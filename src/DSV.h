@@ -9,6 +9,9 @@
 #ifndef __RDSV_H__
 #define __RDSV_H__
 
+#include <stdlib.h>
+#include <stdio.h>
+
 enum dsv_status {
 	E_SUCCESS = 0,
 	E_NO_NEWLINE_FOUND,
