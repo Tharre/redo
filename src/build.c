@@ -417,7 +417,7 @@ static void write_dep_information(dep_info *dep) {
 
 	char hash[41];
 	sha1_to_hex(dep->hash, hash);
-	char *flags = dep->flags & DEP_SOURCE ? "s" : "l";
+	char *flags = (dep->flags & DEP_SOURCE) ? "s" : "l";
 
 	int magic = atoi(getenv("REDO_MAGIC"));
 
@@ -562,7 +562,7 @@ static int handle_c(dep_info *dep) {
 		free(ctx_prereq.fields[1]);
 
 		if (outofdate) {
-			log_info("%s ood: subtarget is ood\n", dep->target);
+			log_info("%s ood: subtarget(s) ood\n", dep->target);
 			retval = build_target(dep);
 			break;
 		}
