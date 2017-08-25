@@ -1,3 +1,4 @@
+#!/bin/sh -e
 # define all project wide variables
 
 export ROOTDIR=$(pwd)
