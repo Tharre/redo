@@ -422,7 +422,7 @@ static void write_dep_information(dep_info *dep) {
 	int magic = atoi(getenv("REDO_MAGIC"));
 
 	/* TODO: casting time_t to long long is probably not entirely portable */
-	if (fprintf(fd, "%s:%lld.%.9ld:%010u:%s\n", hash,
+	if (fprintf(fd, "%s:%lld.%.9ld:%010d:%s\n", hash,
 			(long long)dep->ctime.tv_sec, dep->ctime.tv_nsec, magic, flags) < 0)
 		fatal("redo: failed to write to %s", dep->path);
 
