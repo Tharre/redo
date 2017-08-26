@@ -39,6 +39,7 @@ typedef struct dep_info {
 	const char *target;
 	char *path;
 	unsigned char *hash;
+	uint32_t magic;
 	struct timespec ctime;
 	int32_t flags;
 #define DEP_SOURCE (1 << 1)
@@ -68,7 +69,7 @@ static int build_target(dep_info *dep) {
 			/* if our target file has no .do script associated but exists,
 			   then we treat it as a source */
 			dep->flags |= DEP_SOURCE;
-			if (!dep->hash) /* if the hash was retrieved, ctime was too */
+			if (!dep->hash) /* if the hash exists, ctime and magic do too */
 				update_dep_info(dep, dep->target);
 
 			write_dep_information(dep);
@@ -158,12 +159,17 @@ static int build_target(dep_info *dep) {
 
 		/* recalculate hash after successful build */
 		unsigned char *old_hash = dep->hash;
+		uint32_t old_magic = dep->magic;
 		update_dep_info(dep, dep->target);
-		if (old_hash)
+		if (old_hash) {
 			retval = memcmp(dep->hash, old_hash, 20);
 
-		free(old_hash);
+			/* if the hash doesn't change, don't change the magic number */
+			if (!retval)
+				dep->magic = old_magic;
+		}
 
+		free(old_hash);
 		write_dep_information(dep);
 	} else {
 		if (remove(temp_output) && errno != ENOENT)
@@ -415,6 +421,7 @@ static void update_dep_info(dep_info *dep, const char *target) {
 		fatal("redo: failed to aquire stat() %s", target);
 
 	dep->ctime = st.st_ctim;
+	dep->magic = get_magic_number();
 	fclose(fp);
 }
 
@@ -428,11 +435,9 @@ static void write_dep_information(dep_info *dep) {
 	sha1_to_hex(dep->hash, hash);
 	char *flags = (dep->flags & DEP_SOURCE) ? "s" : "l";
 
-	uint32_t magic = get_magic_number();
-
 	/* TODO: casting time_t to long long is probably not entirely portable */
-	if (fprintf(fd, "%s:%lld.%.9ld:%"PRIu32":%s\n", hash,
-			(long long)dep->ctime.tv_sec, dep->ctime.tv_nsec, magic, flags) < 0)
+	if (fprintf(fd, "%s:%lld.%.9ld:%"PRIu32":%s\n", hash, (long long)dep->ctime.tv_sec,
+				dep->ctime.tv_nsec, dep->magic, flags) < 0)
 		fatal("redo: failed to write to %s", dep->path);
 
 	if (fclose(fd))
@@ -496,6 +501,11 @@ static int handle_c(dep_info *dep) {
 		goto exit;
 	}
 
+	if (sscanf(ctx_dep.fields[2], "%"SCNu32, &dep->magic) < 1) {
+		retval = build_target(dep);
+		goto exit2;
+	}
+
 	FILE *targetfd = fopen(dep->target, "rb");
 	if (!targetfd) {
 		if (errno != ENOENT) {
@@ -509,6 +519,13 @@ static int handle_c(dep_info *dep) {
 			retval = build_target(dep);
 			goto exit2;
 		}
+	}
+
+	if (dep->magic == get_magic_number()) {
+		/* magic number matches */
+		log_info("%s ood: magic number matches\n", dep->target);
+		retval = 1;
+		goto exit3;
 	}
 
 	struct stat curr_st;
@@ -545,7 +562,7 @@ static int handle_c(dep_info *dep) {
 		}
 		free(old_hash);
 
-		/* update ctime hash */
+		/* update ctime */
 		write_dep_information(dep);
 	}
 
