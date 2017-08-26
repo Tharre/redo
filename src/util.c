@@ -121,3 +121,15 @@ void hex_to_sha1(const char *s, unsigned char *sha1) {
 		*sha1 = ((strchr(hex, *s) - hex) << 4) + strchr(hex, *(s+1)) - hex;
 }
 
+uint32_t generate_seed() {
+	uint32_t seed;
+	FILE *fp = fopen("/dev/urandom", "rb");
+	if (!fp)
+		fatal("redo: failed to open /dev/urandom");
+
+	if (fread(&seed, 1, 4, fp) < 4)
+		fatal("redo: failed to read from /dev/urandom");
+
+	fclose(fp);
+	return seed;
+}

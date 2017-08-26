@@ -16,8 +16,9 @@ $CC $CFLAGS -o out/filepath.o -c src/filepath.c
 $CC $CFLAGS -o out/sha1.o -c src/sha1.c
 $CC $CFLAGS -o out/DSV.o -c src/DSV.c
 $CC $CFLAGS -o out/redo.o -c src/redo.c
+$CC $CFLAGS -o out/pcg.o -c src/pcg.c
 $CC -o out/redo out/redo.o out/util.o out/build.o out/filepath.o out/sha1.o \
-       out/DSV.o $LDFLAGS
+       out/DSV.o out/pcg.o $LDFLAGS
 )
 
 ln -sf redo out/redo-ifchange

@@ -20,11 +20,7 @@
 #include "dbg.h"
 #include "filepath.h"
 
-
-/* Returns the amount of digits a number n has in decimal. */
-static inline unsigned digits(unsigned n) {
-	return n ? 1 + digits(n/10) : n;
-}
+#include "pcg.h"
 
 void prepare_env() {
 	if (getenv("REDO_ROOT") && getenv("REDO_PARENT_TARGET")
@@ -39,9 +35,14 @@ void prepare_env() {
 		fatal("redo: failed to setenv() REDO_ROOT to %s", cwd);
 	free(cwd);
 
+	/* initialize random number generator */
+	int rounds = 73;
+	pcg32_random_t rng;
+	pcg32_srandom_r(&rng, generate_seed(), (intptr_t)&rounds);
+
 	/* set REDO_MAGIC */
-	char magic_str[digits(UINT_MAX) + 1];
-	sprintf(magic_str, "%u", rand());
+	char magic_str[11];
+	sprintf(magic_str, "%"PRIu32, pcg32_random_r(&rng));
 	if (setenv("REDO_MAGIC", magic_str, 0))
 		fatal("redo: failed to setenv() REDO_MAGIC to %s", magic_str);
 }
@@ -49,7 +50,6 @@ void prepare_env() {
 int DBG_LVL;
 
 int main(int argc, char *argv[]) {
-	srand(time(NULL));
 	char *argv_base = xbasename(argv[0]);
 
 	if (!strcmp(argv_base, "redo")) {
@@ -62,7 +62,6 @@ int main(int argc, char *argv[]) {
 		}
 	} else {
 		char ident;
-		char **temp;
 		if      (!strcmp(argv_base, "redo-ifchange"))
 			ident = 'c';
 		else if (!strcmp(argv_base, "redo-ifcreate"))
@@ -89,6 +88,7 @@ int main(int argc, char *argv[]) {
 			add_prereq(parent, parent, ident);
 		else
 			for (int i = 1; i < argc; ++i) {
+				char **temp;
 				do {
 					temp = &argv[rand() % (argc-1) + 1];
 				} while (!*temp);

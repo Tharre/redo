@@ -17,6 +17,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <time.h>
+#include <inttypes.h>
 
 #include <libgen.h> /* dirname(), basename() */
 
@@ -394,6 +395,14 @@ void add_prereq_path(const char *target, const char *parent, int ident) {
 	free(reltarget);
 }
 
+static uint32_t get_magic_number() {
+	uint32_t magic;
+	if (sscanf(getenv("REDO_MAGIC"), "%"SCNu32, &magic) < 1)
+		die("redo: failed to parse REDO_MAGIC (%s)", getenv("REDO_MAGIC"));
+
+	return magic;
+}
+
 /* Update hash & ctime information stored in the given dep_info struct */
 static void update_dep_info(dep_info *dep, const char *target) {
 	FILE *fp = fopen(target, "rb");
@@ -419,10 +428,10 @@ static void write_dep_information(dep_info *dep) {
 	sha1_to_hex(dep->hash, hash);
 	char *flags = (dep->flags & DEP_SOURCE) ? "s" : "l";
 
-	int magic = atoi(getenv("REDO_MAGIC"));
+	uint32_t magic = get_magic_number();
 
 	/* TODO: casting time_t to long long is probably not entirely portable */
-	if (fprintf(fd, "%s:%lld.%.9ld:%010d:%s\n", hash,
+	if (fprintf(fd, "%s:%lld.%.9ld:%"PRIu32":%s\n", hash,
 			(long long)dep->ctime.tv_sec, dep->ctime.tv_nsec, magic, flags) < 0)
 		fatal("redo: failed to write to %s", dep->path);
 

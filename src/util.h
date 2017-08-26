@@ -10,6 +10,7 @@
 #define __RUTIL_H__
 
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 
 extern void __attribute__((noreturn)) die_(const char *err, ...);
@@ -20,5 +21,6 @@ extern char *concat(size_t count, ...);
 extern unsigned char *hash_file(FILE *fp);
 extern void sha1_to_hex(const unsigned char *sha1, char *buf);
 extern void hex_to_sha1(const char *s, unsigned char *sha1);
+extern uint32_t generate_seed();
 
 #endif
