@@ -81,9 +81,6 @@ static int build_target(dep_info *dep) {
 	}
 
 	char *reltarget = get_relpath(dep->target);
-	if (!reltarget)
-		fatal("redo: failed to get realpath() of %s", reltarget);
-
 	printf("\033[32mredo  \033[1m\033[37m%s\033[0m\n", reltarget);
 	free(reltarget);
 
@@ -181,9 +178,6 @@ static int build_target(dep_info *dep) {
 		.target = dep->target,
 		.path = get_dep_path(doscripts->chosen),
 	};
-
-	if (!dep2.path)
-		fatal("redo: failed to get realpath() of %s", doscripts->chosen);
 
 	if (!fexists(dep2.path)) {
 		update_dep_info(&dep2, doscripts->chosen);
@@ -325,11 +319,14 @@ static char *get_relpath(const char *target) {
 	char *root = getenv("REDO_ROOT");
 	char *abstarget = xrealpath(target);
 
-	if (!abstarget)
-		return NULL;
+	char *path;
+	if (!abstarget) {
+		path = xstrdup(relpath((char*)target, root));
+	} else {
+		path = xstrdup(relpath(abstarget, root));
+		free(abstarget);
+	}
 
-	char *path = xstrdup(relpath(abstarget, root));
-	free(abstarget);
 	return path;
 }
 
@@ -338,8 +335,6 @@ static char *get_dep_path(const char *target) {
 	char *root = getenv("REDO_ROOT");
 	char *dep_path;
 	char *reltarget = get_relpath(target);
-	if (!reltarget)
-		return NULL;
 
 	char *redodir = is_absolute(reltarget) ? "/.redo/abs/" : "/.redo/rel/";
 	dep_path = concat(3, root, redodir, reltarget);
@@ -360,8 +355,6 @@ static char *get_dep_path(const char *target) {
  */
 void add_prereq(const char *target, const char *parent, int ident) {
 	char *base_path = get_dep_path(parent);
-	if (!base_path)
-		fatal("redo: failed to get realpath() of %s", parent);
 
 	char *dep_path = concat(2, base_path, ".prereq");
 
@@ -394,8 +387,6 @@ void add_prereq(const char *target, const char *parent, int ident) {
  */
 void add_prereq_path(const char *target, const char *parent, int ident) {
 	char *reltarget = get_relpath(target);
-	if (!reltarget)
-		fatal("redo: failed to get realpath() of %s", target);
 
 	add_prereq(reltarget, parent, ident);
 	free(reltarget);
@@ -449,9 +440,6 @@ int update_target(const char *target, int ident) {
 		.target = target,
 		.path = get_dep_path(target),
 	};
-
-	if (!dep.path)
-		return 1;
 
 	int retval = handle_ident(&dep, ident);
 	free(dep.path);
