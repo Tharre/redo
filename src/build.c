@@ -497,9 +497,11 @@ static int handle_c(dep_info *dep) {
 	if (dsv_parse_file(&ctx_dep, depfd)) {
 		/* parsing failed */
 		log_info("%s ood: parsing of dependency file failed\n", dep->target);
+		fclose(depfd);
 		retval = build_target(dep);
 		goto exit;
 	}
+	fclose(depfd);
 
 	if (sscanf(ctx_dep.fields[2], "%"SCNu32, &dep->magic) < 1) {
 		retval = build_target(dep);
@@ -512,8 +514,7 @@ static int handle_c(dep_info *dep) {
 			fatal("redo: failed to open %s", dep->target);
 		} else if (ctx_dep.fields[3][0] == 's') {
 			/* target is a source and must not be rebuild */
-			retval = 1;
-			goto exit2;
+			die("Source %s not found and will not be rebuilt.\n", dep->target);
 		} else {
 			log_info("%s ood: target file nonexistent\n", dep->target);
 			retval = build_target(dep);
@@ -605,6 +606,5 @@ exit2:
 		free(ctx_dep.fields[i]);
 exit:
 	dsv_free(&ctx_dep);
-	fclose(depfd);
 	return retval;
 }
