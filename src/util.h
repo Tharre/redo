@@ -13,7 +13,6 @@
 #include <stdint.h>
 #include <stdio.h>
 
-extern void __attribute__((noreturn)) die_(const char *err, ...);
 extern void *xmalloc(size_t size);
 extern void *xrealloc(void *ptr, size_t size);
 extern char *xstrdup(const char *str);

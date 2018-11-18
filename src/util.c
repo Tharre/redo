@@ -21,18 +21,6 @@
 #include "dbg.h"
 
 
-/* Print a given formated error message and die. */
-extern void __attribute__((noreturn)) die_(const char *err, ...) {
-	assert(err);
-	va_list ap;
-	va_start(ap, err);
-
-	vfprintf(stderr, err, ap);
-
-	va_end(ap);
-	exit(EXIT_FAILURE);
-}
-
 void *xmalloc(size_t size) {
 	assert(size > 0);
 	void *ptr = malloc(size);
