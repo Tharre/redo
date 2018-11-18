@@ -52,82 +52,46 @@ static char **parsecmd(char *cmd, size_t *i, size_t keep_free);
 static char *get_relpath(const char *target);
 static char *xrealpath(const char *path);
 static char *get_dep_path(const char *target);
-static void write_dep_information(dep_info *dep);
+static void store_dep_information(dep_info *dep);
 static int handle_ident(dep_info *dep, int ident);
 static int handle_c(dep_info *dep);
 static void update_dep_info(dep_info *dep, const char *target);
 
 
-/* Build given target, using it's .do script. */
-static int build_target(dep_info *dep) {
-	int retval = 1;
-
-	/* get the .do script which we are going to execute */
-	do_attr *doscripts = get_doscripts(dep->target);
-	if (!doscripts->chosen) {
-		if (fexists(dep->target)) {
-			/* if our target file has no .do script associated but exists,
-			   then we treat it as a source */
-			dep->flags |= DEP_SOURCE;
-			if (!dep->hash) /* if the hash exists, ctime and magic do too */
-				update_dep_info(dep, dep->target);
-
-			write_dep_information(dep);
-			goto exit;
-		}
-
-		die("%s couldn't be built as no suitable .do script exists\n",
-				dep->target);
-	}
-
-	char *reltarget = get_relpath(dep->target);
+/* Runs the given doscript, on the given target. Returns nonzero if the script
+   produced the target and zero otherwise. */
+static bool run_doscript(const char *doscript, const char *target) {
+	char *reltarget = get_relpath(target);
 	printf("\033[32mredo  \033[1m\033[37m%s\033[0m\n", reltarget);
 	free(reltarget);
 
-	/* remove old dependency record */
-	if (remove(dep->path) && errno != ENOENT)
-		fatal("redo: failed to remove %s", dep->path);
-
-	char *prereq = concat(2, dep->path, ".prereq");
-	if (remove(prereq) && errno != ENOENT)
-		fatal("redo: failed to remove %s", prereq);
-
-	free(prereq);
-
-	char *temp_output = concat(2, dep->target, ".redoing.tmp");
+	char *temp_output = concat(2, target, ".redoing.tmp");
 
 	pid_t pid = fork();
 	if (pid == -1) {
-		/* failure */
 		fatal("redo: failed to fork() new process");
 	} else if (pid == 0) {
 		/* child */
-
 		char *abstemp = xrealpath(temp_output);
 		if (!abstemp)
 			fatal("redo: failed to get realpath() of %s", temp_output);
 
 		/* change directory to our target */
-		char *dirc = xstrdup(doscripts->chosen);
+		char *dirc = xstrdup(doscript);
 		char *ddoscript = dirname(dirc);
 		if (chdir(ddoscript) == -1)
 			fatal("redo: failed to change directory to %s", ddoscript);
 
 		free(dirc);
 
-		char **argv = parse_shebang(xbasename(dep->target),
-				xbasename(doscripts->chosen), abstemp);
+		char **argv = parse_shebang(xbasename(target),
+				xbasename(doscript), abstemp);
 
 		/* set "REDO_PARENT_TARGET" */
-		if (setenv("REDO_PARENT_TARGET", dep->target, 1))
+		if (setenv("REDO_PARENT_TARGET", target, 1))
 			fatal("redo: failed to setenv() REDO_PARENT_TARGET to %s",
-					dep->target);
+					target);
 
-		/* excelp() has nearly everything we want: automatic parsing of the
-		   shebang line through execve() and fallback to /bin/sh if no valid
-		   shebang could be found. However, it fails if the target doesn't have
-		   the executeable bit set, which is something we don't want. For this
-		   reason we parse the shebang line ourselves. */
 		execv(argv[0], argv);
 
 		/* execv should never return */
@@ -142,61 +106,92 @@ static int build_target(dep_info *dep) {
 	/* check how our child exited */
 	if (WIFEXITED(status)) {
 		if (WEXITSTATUS(status))
-			die("redo: invoked .do script %s failed: %d\n", doscripts->chosen,
+			die("redo: invoked .do script %s failed: %d\n", doscript,
 			    WEXITSTATUS(status));
 	} else {
 		/* something very wrong happened with the child */
 		die("redo: invoked .do script did not terminate correctly\n");
 	}
 
-	/* check if our output file is > 0 bytes long */
 	if (fsize(temp_output) > 0) {
-		if (rename(temp_output, dep->target))
-			fatal("redo: failed to rename %s to %s", temp_output, dep->target);
+		if (rename(temp_output, target))
+			fatal("redo: failed to rename %s to %s", temp_output, target);
 
-		/* recalculate hash after successful build */
-		unsigned char *old_hash = dep->hash;
-		uint32_t old_magic = dep->magic;
-		update_dep_info(dep, dep->target);
-		if (old_hash) {
-			retval = memcmp(dep->hash, old_hash, 20);
-
-			/* if the hash doesn't change, don't change the magic number */
-			if (!retval)
-				dep->magic = old_magic;
-		}
-
-		free(old_hash);
-		write_dep_information(dep);
+		free(temp_output);
+		return 1;
 	} else {
 		if (remove(temp_output) && errno != ENOENT)
 			fatal("redo: failed to remove %s", temp_output);
+
+		free(temp_output);
+		return 0;
+	}
+}
+
+/* Let target depend on dependency */
+static void depends_on(const char *target) {
+	dep_info dep = { .path = get_dep_path(target) };
+
+	if (!fexists(dep.path)) {
+		update_dep_info(&dep, target);
+		store_dep_information(&dep);
+		free(dep.hash);
+	}
+	free(dep.path);
+}
+
+/* Rebuild target dependency, returning nonzero if it's changed in the process,
+  or zero otherwise. */
+int rebuild(dep_info *dep) {
+	if (dep->flags & (1 << DEP_SOURCE))
+		die("Source %s not found and will not be rebuilt.\n", dep->target);
+
+	/* remove old dependency record */
+	if (remove(dep->path) && errno != ENOENT)
+		fatal("redo: failed to remove %s", dep->path);
+
+	char *prereq = concat(2, dep->path, ".prereq");
+	if (remove(prereq) && errno != ENOENT)
+		fatal("redo: failed to remove %s", prereq);
+
+	free(prereq);
+
+	do_attr *doscripts = get_doscripts(dep->target);
+	if (!doscripts->chosen) {
+		/* if no do script exists, it must be a source (and thus exist) */
+		if (!fexists(dep->target))
+			die("%s couldn't be built as no suitable .do script exists\n",
+					dep->target);
+
+		dep->flags |= DEP_SOURCE;
+	} else if (!run_doscript(doscripts->chosen, dep->target)) {
+		/* do script produced no output */
+		free_do_attr(doscripts);
+		return 1;
+	} else {
+		depends_on(doscripts->chosen);
+
+		/* depend on the .do script */
+		add_prereq_path(doscripts->chosen, dep->target, 'c');
+
+		/* redo-ifcreate on specific if general was chosen */
+		if (doscripts->general == doscripts->chosen)
+			add_prereq_path(doscripts->specific, dep->target, 'e');
 	}
 
-	/* depend on the .do script */
-	dep_info dep2 = {
-		.target = dep->target,
-		.path = get_dep_path(doscripts->chosen),
-	};
+	uint32_t old_magic = dep->magic;
+	unsigned char *old_hash = dep->hash;
+	update_dep_info(dep, dep->target);
 
-	if (!fexists(dep2.path)) {
-		update_dep_info(&dep2, doscripts->chosen);
-		write_dep_information(&dep2);
-		free(dep2.hash);
+	if (old_hash && memcmp(dep->hash, old_hash, 20)) {
+		/* if the hash didn't change, don't change the magic number */
+		dep->magic = old_magic;
 	}
-	free(dep2.path);
+	free(old_hash);
 
-	add_prereq_path(doscripts->chosen, dep->target, 'c');
-
-	/* redo-ifcreate on specific if general was chosen */
-	if (doscripts->general == doscripts->chosen)
-		add_prereq_path(doscripts->specific, dep->target, 'e');
-
-	free(temp_output);
-exit:
+	store_dep_information(dep);
 	free_do_attr(doscripts);
-
-	return retval;
+	return 0;
 }
 
 /* Read and parse shebang and return an argv-like pointer array containing the
@@ -400,7 +395,7 @@ static uint32_t get_magic_number() {
 	return magic;
 }
 
-/* Update hash & ctime information stored in the given dep_info struct */
+/* Update hash, ctime and magic number stored in the given dep_info struct */
 static void update_dep_info(dep_info *dep, const char *target) {
 	FILE *fp = fopen(target, "rb");
 	if (!fp)
@@ -416,8 +411,8 @@ static void update_dep_info(dep_info *dep, const char *target) {
 	fclose(fp);
 }
 
-/* Write the dependency information into the specified path. */
-static void write_dep_information(dep_info *dep) {
+/* Store the given dependency information in the filesystem. */
+static void store_dep_information(dep_info *dep) {
 	FILE *fd = fopen(dep->path, "w+");
 	if (!fd)
 		fatal("redo: failed to open %s", dep->path);
@@ -451,10 +446,10 @@ int update_target(const char *target, int ident) {
 static int handle_ident(dep_info *dep, int ident) {
 	switch(ident) {
 	case 'a':
-		return build_target(dep);
+		return rebuild(dep);
 	case 'e':
 		if (fexists(dep->target))
-			return build_target(dep);
+			return rebuild(dep);
 
 		return 0;
 	case 'c':
@@ -474,7 +469,7 @@ static int handle_c(dep_info *dep) {
 		if (errno == ENOENT) {
 			/* dependency record does not exist */
 			log_warn("%s ood: dependency record doesn't exist\n", dep->target);
-			return build_target(dep);
+			return rebuild(dep);
 		} else {
 			fatal("redo: failed to open %s", dep->path);
 		}
@@ -486,26 +481,28 @@ static int handle_c(dep_info *dep) {
 		/* parsing failed */
 		log_info("%s ood: parsing of dependency file failed\n", dep->target);
 		fclose(depfd);
-		retval = build_target(dep);
+		retval = rebuild(dep);
 		goto exit;
 	}
 	fclose(depfd);
 
+	/* validate magic number */
 	if (sscanf(ctx_dep.fields[2], "%"SCNu32, &dep->magic) < 1) {
-		retval = build_target(dep);
+		retval = rebuild(dep);
 		goto exit2;
 	}
+
+	/* parse flags */
+	if (ctx_dep.fields[3][0] == 's')
+		dep->flags |= DEP_SOURCE;
 
 	FILE *targetfd = fopen(dep->target, "rb");
 	if (!targetfd) {
 		if (errno != ENOENT) {
 			fatal("redo: failed to open %s", dep->target);
-		} else if (ctx_dep.fields[3][0] == 's') {
-			/* target is a source and must not be rebuild */
-			die("Source %s not found and will not be rebuilt.\n", dep->target);
 		} else {
 			log_info("%s ood: target file nonexistent\n", dep->target);
-			retval = build_target(dep);
+			retval = rebuild(dep);
 			goto exit2;
 		}
 	}
@@ -522,14 +519,14 @@ static int handle_c(dep_info *dep) {
 				&dep->ctime.tv_nsec) < 2) {
 		/* ctime parsing failed */
 		log_info("%s ood: ctime parsing failed\n", dep->target);
-		retval = build_target(dep);
+		retval = rebuild(dep);
 		goto exit3;
 	}
 
 	if (fstat(fileno(targetfd), &curr_st))
 		fatal("redo: failed to stat() %s", dep->target);
 
-	/* store the hash now, as build_target() will need it for comparison */
+	/* store the hash now, as rebuild() will need it for comparison */
 	unsigned char *old_hash = xmalloc(20);
 	hex_to_sha1(ctx_dep.fields[0], old_hash); /* TODO: error checking */
 	dep->hash = old_hash;
@@ -546,13 +543,13 @@ static int handle_c(dep_info *dep) {
 			/* target hash doesn't match */
 			log_info("%s ood: hashes don't match\n", dep->target);
 			free(old_hash);
-			retval = build_target(dep);
+			retval = rebuild(dep);
 			goto exit3;
 		}
 		free(old_hash);
 
 		/* update ctime */
-		write_dep_information(dep);
+		store_dep_information(dep);
 	}
 
 	/* make sure all prereq dependencies are met */
@@ -578,7 +575,7 @@ static int handle_c(dep_info *dep) {
 
 		if (outofdate) {
 			log_info("%s ood: subtarget(s) ood\n", dep->target);
-			retval = build_target(dep);
+			retval = rebuild(dep);
 			break;
 		}
 	}
