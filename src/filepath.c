@@ -129,7 +129,7 @@ void mkpath(char *path, mode_t mode) {
 /* Make path absolute by prepending root, if path isn't already absolute. */
 char *make_abs(char *root, char *path) {
 	if (!is_absolute(path))
-		return concat(3, root, "/", path);
+		return concat(root, "/", path);
 	else
 		return xstrdup(path);
 }

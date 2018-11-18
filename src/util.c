@@ -59,7 +59,7 @@ char *xstrdup(const char *str) {
 }
 
 /* For concating multiple strings into a single larger one. */
-char *concat(size_t count, ...) {
+char *concat_(size_t count, ...) {
 	assert(count > 0);
 	va_list ap, ap2;
 	va_start(ap, count);

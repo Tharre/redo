@@ -65,7 +65,7 @@ static bool run_doscript(const char *doscript, const char *target) {
 	printf("\033[32mredo  \033[1m\033[37m%s\033[0m\n", reltarget);
 	free(reltarget);
 
-	char *temp_output = concat(2, target, ".redoing.tmp");
+	char *temp_output = concat(target, ".redoing.tmp");
 
 	pid_t pid = fork();
 	if (pid == -1) {
@@ -150,7 +150,7 @@ int rebuild(dep_info *dep) {
 	if (remove(dep->path) && errno != ENOENT)
 		fatal("redo: failed to remove %s", dep->path);
 
-	char *prereq = concat(2, dep->path, ".prereq");
+	char *prereq = concat(dep->path, ".prereq");
 	if (remove(prereq) && errno != ENOENT)
 		fatal("redo: failed to remove %s", prereq);
 
@@ -268,11 +268,11 @@ static char **parsecmd(char *cmd, size_t *i, size_t keep_free) {
 static do_attr *get_doscripts(const char *target) {
 	do_attr *ds = xmalloc(sizeof(do_attr));
 
-	ds->specific = concat(2, target, ".do");
+	ds->specific = concat(target, ".do");
 	char *dirc = xstrdup(target);
 	char *dt = dirname(dirc);
 
-	ds->general = concat(4, dt, "/default", take_extension(target), ".do");
+	ds->general = concat(dt, "/default", take_extension(target), ".do");
 	free(dirc);
 
 	if (fexists(ds->specific))
@@ -301,7 +301,7 @@ static char *xrealpath(const char *path) {
 
 	char *abstarget = NULL;
 	if (absdir)
-		abstarget = concat(3, absdir, "/", xbasename(path));
+		abstarget = concat(absdir, "/", xbasename(path));
 
 	free(dirc);
 	free(absdir);
@@ -332,7 +332,7 @@ static char *get_dep_path(const char *target) {
 	char *reltarget = get_relpath(target);
 
 	char *redodir = is_absolute(reltarget) ? "/.redo/abs/" : "/.redo/rel/";
-	dep_path = concat(3, root, redodir, reltarget);
+	dep_path = concat(root, redodir, reltarget);
 
 	/* create directory */
 	mkpath(dep_path, 0755); /* TODO: should probably be somewhere else */
@@ -351,7 +351,7 @@ static char *get_dep_path(const char *target) {
 void add_prereq(const char *target, const char *parent, int ident) {
 	char *base_path = get_dep_path(parent);
 
-	char *dep_path = concat(2, base_path, ".prereq");
+	char *dep_path = concat(base_path, ".prereq");
 
 	int fd = open(dep_path, O_WRONLY | O_APPEND | O_CREAT, 0644);
 	if (fd < 0)
@@ -553,7 +553,7 @@ static int handle_c(dep_info *dep) {
 	}
 
 	/* make sure all prereq dependencies are met */
-	char *prereq_path = concat(2, dep->path, ".prereq");
+	char *prereq_path = concat(dep->path, ".prereq");
 	FILE *prereqfd = fopen(prereq_path, "rb");
 	if (!prereqfd) {
 		if (errno != ENOENT)
