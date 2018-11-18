@@ -22,4 +22,7 @@ elif [ "$1" = "install" ]; then
 	ln -sf "$DESTDIR/redo" "$DESTDIR/redo-ifcreate"
 	ln -sf "$DESTDIR/redo" "$DESTDIR/redo-always"
 	echo "Finished installing."
+else
+	echo "No such target."
+	exit 1
 fi
