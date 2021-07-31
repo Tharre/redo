@@ -125,7 +125,7 @@ void mkpath(char *path, mode_t mode) {
 
 	for (p=strchr(path+1, '/'); p; p=strchr(p+1, '/')) {
 		*p = '\0';
-		if (mkdir(path, mode) == -1 && errno != EEXIST)
+		if (UNI_mkdir(path, mode) == -1 && errno != EEXIST)
 			fatal("redo: failed to mkdir() '%s'", path);
 
 		*p = '/';
