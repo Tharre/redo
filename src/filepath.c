@@ -16,6 +16,12 @@
 #define _FILENAME "build.c"
 #include "dbg.h"
 
+#if defined (_WIN32)
+	#define UNI_mkdir(path, mode) mkdir(path)
+#else
+	#define UNI_mkdir(path, mode) mkdir(path, mode)
+#endif
+
 
 /* Check if the given path is absolute. */
 bool is_absolute(const char* path) {
