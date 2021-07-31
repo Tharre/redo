@@ -22,6 +22,27 @@
 
 #include "pcg.h"
 
+#if defined(_WIN32)
+
+#include <windows.h>
+#include <winbase.h>
+#include <stdbool.h>
+inline int UNI_setenv(const char *name, const char *value, int overwrite)
+{
+	if ( !overwrite )
+	{
+		// if variable already exists -> SUCCESS
+		if ( GetEnvironmentVariable(name, NULL, 0) != 0 ) return 0;
+	}
+	
+	return (SetEnvironmentVariable(name, value) != 0) ? 0 : -1;
+}
+	
+#else
+	#define UNI_setenv(name, value, overwrite) setenv(name, value, overwrite)
+#endif
+
+
 void prepare_env() {
 	if (getenv("REDO_ROOT") && getenv("REDO_PARENT_TARGET")
 	    && getenv("REDO_MAGIC"))
@@ -31,7 +52,7 @@ void prepare_env() {
 	char *cwd = getcwd(NULL, 0);
 	if (!cwd)
 		fatal("redo: failed to obtain cwd");
-	if (setenv("REDO_ROOT", cwd, 0))
+	if (UNI_setenv("REDO_ROOT", cwd, 0))
 		fatal("redo: failed to setenv() REDO_ROOT to %s", cwd);
 	free(cwd);
 
@@ -43,7 +64,7 @@ void prepare_env() {
 	/* set REDO_MAGIC */
 	char magic_str[11];
 	sprintf(magic_str, "%"PRIu32, pcg32_random_r(&rng));
-	if (setenv("REDO_MAGIC", magic_str, 0))
+	if (UNI_setenv("REDO_MAGIC", magic_str, 0))
 		fatal("redo: failed to setenv() REDO_MAGIC to %s", magic_str);
 }
 
