@@ -35,7 +35,11 @@ extern int DBG_LVL;
 #define log_err(...) fprintf(stderr, PREFIX(__VA_ARGS__))
 #define log_warn(...) do { if (DBG_LVL > 2) log_err(__VA_ARGS__); } while (0)
 #define log_info(...) do { if (DBG_LVL > 1) log_err(__VA_ARGS__); } while (0)
-#define die(...) die_(PREFIX(__VA_ARGS__))
+#define die(...)                                                               \
+	do {                                                                   \
+		log_err(__VA_ARGS__);                                          \
+		exit(EXIT_FAILURE);                                            \
+	} while (0)
 #define fatal(...) die(SUFFIX(": %s\n", __VA_ARGS__, strerror(errno)))
 
 #ifdef NDEBUG

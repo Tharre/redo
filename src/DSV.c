@@ -132,7 +132,7 @@ int dsv_parse_next_line(struct dsv_ctx *context, const char *src, size_t len) {
 	}
 
 	if (i+1 < context->fields_count) {
-		debug("DSV: too few fields (%zu)\n", i+1);
+		debug("DSV: too few fields (%Iu)\n", i+1);
 		context->status = E_TOO_FEW_FIELDS;
 		goto error;
 	}

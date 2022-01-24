@@ -21,18 +21,6 @@
 #include "dbg.h"
 
 
-/* Print a given formated error message and die. */
-extern void __attribute__((noreturn)) die_(const char *err, ...) {
-	assert(err);
-	va_list ap;
-	va_start(ap, err);
-
-	vfprintf(stderr, err, ap);
-
-	va_end(ap);
-	exit(EXIT_FAILURE);
-}
-
 void *xmalloc(size_t size) {
 	assert(size > 0);
 	void *ptr = malloc(size);
@@ -59,7 +47,7 @@ char *xstrdup(const char *str) {
 }
 
 /* For concating multiple strings into a single larger one. */
-char *concat(size_t count, ...) {
+char *concat_(size_t count, ...) {
 	assert(count > 0);
 	va_list ap, ap2;
 	va_start(ap, count);
@@ -121,3 +109,15 @@ void hex_to_sha1(const char *s, unsigned char *sha1) {
 		*sha1 = ((strchr(hex, *s) - hex) << 4) + strchr(hex, *(s+1)) - hex;
 }
 
+uint32_t generate_seed() {
+	uint32_t seed;
+	FILE *fp = fopen("/dev/urandom", "rb");
+	if (!fp)
+		fatal("redo: failed to open /dev/urandom");
+
+	if (fread(&seed, 1, 4, fp) < 4)
+		fatal("redo: failed to read from /dev/urandom");
+
+	fclose(fp);
+	return seed;
+}

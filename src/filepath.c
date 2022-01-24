@@ -16,6 +16,12 @@
 #define _FILENAME "build.c"
 #include "dbg.h"
 
+#if defined (_WIN32)
+	#define UNI_mkdir(path, mode) mkdir(path)
+#else
+	#define UNI_mkdir(path, mode) mkdir(path, mode)
+#endif
+
 
 /* Check if the given path is absolute. */
 bool is_absolute(const char* path) {
@@ -119,7 +125,7 @@ void mkpath(char *path, mode_t mode) {
 
 	for (p=strchr(path+1, '/'); p; p=strchr(p+1, '/')) {
 		*p = '\0';
-		if (mkdir(path, mode) == -1 && errno != EEXIST)
+		if (UNI_mkdir(path, mode) == -1 && errno != EEXIST)
 			fatal("redo: failed to mkdir() '%s'", path);
 
 		*p = '/';
@@ -129,7 +135,7 @@ void mkpath(char *path, mode_t mode) {
 /* Make path absolute by prepending root, if path isn't already absolute. */
 char *make_abs(char *root, char *path) {
 	if (!is_absolute(path))
-		return concat(3, root, "/", path);
+		return concat(root, "/", path);
 	else
 		return xstrdup(path);
 }
